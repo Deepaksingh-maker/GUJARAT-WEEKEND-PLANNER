@@ -16,7 +16,8 @@ import {
   LogOut, 
   ShieldCheck, 
   Home,
-  MessageSquare
+  MessageSquare,
+  QrCode
 } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import MessageNavButton from "@/components/MessageNavButton";
@@ -113,6 +114,19 @@ export default function Navbar() {
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Admin Panel</span>
+              </Link>
+            )}
+
+            {(isHost || isAdmin) && (
+              <Link
+                href="/scanner"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 transition-colors flex items-center space-x-1"
+                title="Scan Booking Pass QR"
+              >
+                <QrCode className="w-3.5 h-3.5 text-stone-600" />
+                <span>Pass Scanner ↗</span>
               </Link>
             )}
 

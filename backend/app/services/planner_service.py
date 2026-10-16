@@ -136,72 +136,89 @@ class PlannerService:
                 )
                 available_props.append((p, stay_subtotal + cleaning_fee))
 
-        # Build curated plan options
-        for idx, (prop, stay_cost) in enumerate(available_props[:3]):
-            # Select 1 or 2 matching activities
-            selected_activities = []
-            activities_cost = 0.0
+        # Build curated plan options with multiple tiers
+        tier_definitions = [
+            {
+                "tier_name": f"Signature {destination_name} Escape",
+                "tagline": f"Handcrafted {nights}-night stay featuring guided activities and local comfort",
+                "max_acts": 2,
+                "score_offset": 0,
+                "highlight_prefix": "All-Inclusive Signature Experience"
+            },
+            {
+                "tier_name": f"Essential {request.interest.title()} Explorer",
+                "tagline": f"Focused weekend itinerary pairing verified stay with top-rated {request.interest.lower()} excursion",
+                "max_acts": 1,
+                "score_offset": -4,
+                "highlight_prefix": "Smart Value & Essential Adventure"
+            },
+            {
+                "tier_name": f"Deluxe Leisure & Heritage Retreat",
+                "tagline": f"Relaxed pace weekend designed for unwinding, local cuisine, and scenic nature views",
+                "max_acts": 1,
+                "score_offset": -8,
+                "highlight_prefix": "Relaxed Pace & Authentic Flavors"
+            }
+        ]
 
-            for act in sorted_activities[:2]:
-                # find a matching slot if available
-                act_cost = act.price * request.guests
-                if not request.budget or (stay_cost + activities_cost + act_cost <= request.budget * 1.15):
-                    # Find a slot for date
-                    first_slot = next(
-                        (s for s in act.slots if s.date == request.date_start and s.remaining_capacity >= request.guests),
-                        None
-                    )
-                    slot_info = None
-                    if first_slot:
-                        slot_info = {
-                            "slot_id": first_slot.id,
-                            "date": str(first_slot.date),
-                            "start_time": first_slot.start_time,
-                            "price": first_slot.price
-                        }
-
-                    selected_activities.append(
-                        PlanActivityOption(
-                            activity=ActivityResponse.model_validate(act),
-                            estimated_activity_cost=act_cost,
-                            recommended_slot=slot_info
-                        )
-                    )
-                    activities_cost += act_cost
-
-            total_plan_cost = round(stay_cost + activities_cost, 2)
+        for prop_idx, (prop, stay_cost) in enumerate(available_props[:4]):
+            # If we have multiple properties, generate 1 or 2 plans per property
+            # If only 1 property, generate all 3 distinct tiers for that property
+            tiers_to_use = tier_definitions if len(available_props) == 1 else [tier_definitions[prop_idx % len(tier_definitions)]]
             
-            titles = [
-                f"Classic {request.interest.title()} Retreat",
-                f"Signature {destination_name} Weekend Escape",
-                f"All-Inclusive Nature & Leisure Package"
-            ]
-            taglines = [
-                f"Handcrafted {nights}-night stay featuring guided activities and local comfort",
-                f"Immersive Gujarat weekend curated for {request.guests} guests",
-                f"Peaceful retreat tailored for unforgettable weekend memories"
-            ]
+            for t_idx, tier in enumerate(tiers_to_use):
+                selected_activities = []
+                activities_cost = 0.0
 
-            plan_opt = WeekendPlanOption(
-                plan_id=f"plan_{prop.id}_{idx}",
-                title=titles[idx % len(titles)],
-                destination=destination_name,
-                tagline=taglines[idx % len(taglines)],
-                stay=PlanStayOption(
-                    property=PropertyResponse.model_validate(prop),
-                    nights=nights,
-                    estimated_stay_cost=stay_cost
-                ),
-                activities=selected_activities,
-                estimated_total=total_plan_cost,
-                match_score=95 - (idx * 5),
-                highlights=[
-                    f"Verified {prop.property_type.value.capitalize()} in {destination_name}",
-                    f"Tailored for {request.interest.capitalize()} lovers",
-                    f"{len(selected_activities)} Curated Experiential Activities Included"
-                ]
-            )
-            plans.append(plan_opt)
+                for act in sorted_activities[:tier["max_acts"]]:
+                    act_cost = act.price * request.guests
+                    if not request.budget or (stay_cost + activities_cost + act_cost <= request.budget * 1.25):
+                        first_slot = next(
+                            (s for s in act.slots if s.date == request.date_start and s.remaining_capacity >= request.guests),
+                            None
+                        )
+                        slot_info = None
+                        if first_slot:
+                            slot_info = {
+                                "slot_id": first_slot.id,
+                                "date": str(first_slot.date),
+                                "start_time": first_slot.start_time,
+                                "price": first_slot.price
+                            }
+
+                        selected_activities.append(
+                            PlanActivityOption(
+                                activity=ActivityResponse.model_validate(act),
+                                estimated_activity_cost=act_cost,
+                                recommended_slot=slot_info
+                            )
+                        )
+                        activities_cost += act_cost
+
+                total_plan_cost = round(stay_cost + activities_cost, 2)
+                plan_title = f"{tier['tier_name']} - {prop.name}" if len(available_props) > 1 else tier['tier_name']
+
+                plan_opt = WeekendPlanOption(
+                    plan_id=f"plan_{prop.id}_{prop_idx}_{t_idx}",
+                    title=plan_title,
+                    destination=destination_name,
+                    tagline=tier["tagline"],
+                    stay=PlanStayOption(
+                        property=PropertyResponse.model_validate(prop),
+                        nights=nights,
+                        estimated_stay_cost=stay_cost
+                    ),
+                    activities=selected_activities,
+                    estimated_total=total_plan_cost,
+                    match_score=max(75, 96 - (prop_idx * 5) + tier["score_offset"]),
+                    highlights=[
+                        f"Verified {prop.property_type.value.capitalize()} in {destination_name}",
+                        f"{tier['highlight_prefix']} tailored for {request.guests} guests",
+                        f"{len(selected_activities)} Curated Experiential Activities Included",
+                        f"Instant QR pass check-in with verified host support"
+                    ]
+                )
+                plans.append(plan_opt)
 
         return WeekendPlanResponse(
             query=request,

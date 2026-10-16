@@ -56,10 +56,16 @@ export default function PropertyDetailPage() {
   const [checkIn, setCheckIn] = useState(tomorrow.toISOString().split("T")[0]);
   const [checkOut, setCheckOut] = useState(dayAfter.toISOString().split("T")[0]);
   const [guests, setGuests] = useState(2);
+  const [quantity, setQuantity] = useState(1);
   const [specialRequests, setSpecialRequests] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
+
+  // Live Database Availability State
+  const [availability, setAvailability] = useState<any>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [showNightBreakdown, setShowNightBreakdown] = useState(false);
 
   // Location Activities to add-on
   const [availableActivities, setAvailableActivities] = useState<any[]>([]);
@@ -117,7 +123,38 @@ export default function PropertyDetailPage() {
     loadProperty();
   }, [idOrSlug]);
 
-  // Recalculate server price whenever dates, guests, coupon, or activities change
+  // Live Database Availability Check
+  useEffect(() => {
+    if (!property || !checkIn || !checkOut) return;
+
+    let isMounted = true;
+    async function checkLiveAvailability() {
+      try {
+        setCheckingAvailability(true);
+        const res = await api.properties.getAvailability(property.id, {
+          check_in: checkIn,
+          check_out: checkOut,
+          guests,
+          quantity,
+        });
+        if (isMounted && res.success && res.data) {
+          setAvailability(res.data);
+        }
+      } catch (err: any) {
+        console.error("Availability check failed:", err);
+      } finally {
+        if (isMounted) setCheckingAvailability(false);
+      }
+    }
+
+    const timer = setTimeout(checkLiveAvailability, 250);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [property, checkIn, checkOut, guests, quantity]);
+
+  // Recalculate server price whenever dates, guests, quantity, coupon, or activities change
   useEffect(() => {
     if (!property || !checkIn || !checkOut) return;
 
@@ -137,6 +174,7 @@ export default function PropertyDetailPage() {
           check_in: checkIn,
           check_out: checkOut,
           guest_count: guests,
+          quantity: quantity,
           coupon_code: couponCode.trim() || undefined,
           activities: activitiesPayload,
         });
@@ -156,7 +194,7 @@ export default function PropertyDetailPage() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [property, checkIn, checkOut, guests, couponCode, selectedActivitySlots]);
+  }, [property, checkIn, checkOut, guests, quantity, couponCode, selectedActivitySlots]);
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim() || !pricing) return;
@@ -196,6 +234,7 @@ export default function PropertyDetailPage() {
         check_in: checkIn,
         check_out: checkOut,
         guest_count: guests,
+        quantity: quantity,
         special_requests: specialRequests,
         coupon_code: couponCode.trim() || undefined,
         activities: activitiesPayload,
@@ -206,7 +245,18 @@ export default function PropertyDetailPage() {
         router.push(`/checkout/${res.data.id}`);
       }
     } catch (err: any) {
-      setBookingError(err.message || "Could not reserve property. Dates may have just been booked.");
+      const msg = err.message || "";
+      if (
+        msg.includes("409") ||
+        msg.toLowerCase().includes("conflict") ||
+        msg.toLowerCase().includes("no longer available")
+      ) {
+        setBookingError(
+          "Sorry, this property is no longer available for your selected dates. Please choose another date or property."
+        );
+      } else {
+        setBookingError(err.message || "Could not reserve property. Dates may have just been booked.");
+      }
     } finally {
       setReserving(false);
     }
@@ -628,6 +678,78 @@ export default function PropertyDetailPage() {
             </span>
           </div>
 
+          {/* Live Availability Status Banner */}
+          {checkingAvailability ? (
+            <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80 flex items-center space-x-2 text-xs text-stone-500 animate-pulse">
+              <Clock className="w-4 h-4 text-brand-600 animate-spin" />
+              <span>Verifying live database inventory...</span>
+            </div>
+          ) : availability ? (
+            <div
+              className={`p-3.5 rounded-2xl border text-xs font-semibold flex flex-col space-y-1.5 ${
+                availability.availability_status === "available"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                  : availability.availability_status === "limited_availability"
+                  ? "bg-amber-50 border-amber-200 text-amber-900"
+                  : availability.availability_status === "sold_out"
+                  ? "bg-rose-50 border-rose-200 text-rose-900"
+                  : "bg-sky-50 border-sky-200 text-sky-900"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      availability.availability_status === "available"
+                        ? "bg-emerald-500 animate-pulse"
+                        : availability.availability_status === "limited_availability"
+                        ? "bg-amber-500 animate-ping"
+                        : availability.availability_status === "sold_out"
+                        ? "bg-rose-500"
+                        : "bg-sky-500"
+                    }`}
+                  />
+                  <span className="font-extrabold capitalize">
+                    {availability.availability_status.replace("_", " ")}
+                  </span>
+                </div>
+                {availability.total_units > 1 && (
+                  <span className="text-[11px] font-bold opacity-80">
+                    {availability.available_units} of {availability.total_units} units free
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] font-medium opacity-90 leading-tight">
+                {availability.message}
+              </p>
+
+              {/* Night breakdown toggle */}
+              {availability.night_breakdown && availability.night_breakdown.length > 0 && (
+                <div className="pt-1.5 border-t border-black/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowNightBreakdown(!showNightBreakdown)}
+                    className="text-[11px] font-bold underline hover:opacity-80"
+                  >
+                    {showNightBreakdown ? "Hide nightly breakdown" : "View nightly occupancy"}
+                  </button>
+                  {showNightBreakdown && (
+                    <div className="mt-2 space-y-1 bg-white/70 rounded-xl p-2 text-[10px]">
+                      {availability.night_breakdown.map((n: any) => (
+                        <div key={n.date} className="flex justify-between items-center py-0.5 border-b border-black/5 last:border-0">
+                          <span>{n.date}</span>
+                          <span className={n.available_units === 0 ? "text-rose-600 font-bold" : "text-stone-700"}>
+                            {n.available_units === 0 ? "Fully Booked / Blocked" : `${n.available_units} free`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* Dates Selection */}
           <div className="grid grid-cols-2 gap-2 p-3 bg-stone-50 rounded-2xl border border-stone-200/80">
             <div>
@@ -652,21 +774,91 @@ export default function PropertyDetailPage() {
             </div>
           </div>
 
-          {/* Guests Selection */}
-          <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80">
-            <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">Guests</label>
-            <select
-              value={guests}
-              onChange={(e) => setGuests(Number(e.target.value))}
-              className="w-full bg-transparent text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
-            >
-              {Array.from({ length: property.max_guests }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>
-                  {n} Guest{n > 1 ? "s" : ""} {n === property.max_guests ? "(Max Capacity)" : ""}
-                </option>
-              ))}
-            </select>
+          {/* Capacity: Guests & Rooms Grid */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Guests Selection */}
+            <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80">
+              <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">Guests</label>
+              <select
+                value={guests}
+                onChange={(e) => setGuests(Number(e.target.value))}
+                className="w-full bg-transparent text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
+              >
+                {Array.from({ length: (property.max_guests || 6) * quantity }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n} Guest{n > 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Rooms / Quantity Selection */}
+            <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80">
+              <label className="text-[10px] font-bold text-stone-500 uppercase block mb-1">Rooms / Units</label>
+              <select
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+                className="w-full bg-transparent text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
+              >
+                {Array.from({ length: Math.min(property.total_units || 1, 10) }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n} Room{n > 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {/* Alternative Dates Suggestions if Sold Out / Unavailable */}
+          {availability && !availability.is_available && availability.alternative_dates && availability.alternative_dates.length > 0 && (
+            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/80 space-y-2.5">
+              <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-900">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>Available Alternative Dates for this stay:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {availability.alternative_dates.map((alt: any, idx: number) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setCheckIn(alt.check_in);
+                      setCheckOut(alt.check_out);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 hover:border-amber-500 hover:bg-amber-100 text-[11px] font-bold text-amber-900 shadow-sm transition-all"
+                  >
+                    📅 {alt.check_in} → {alt.check_out} ({alt.nights}n)
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Alternative Properties in Destination */}
+          {availability && !availability.is_available && availability.alternative_properties && availability.alternative_properties.length > 0 && (
+            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-2.5">
+              <span className="text-xs font-bold text-stone-800 block">
+                Available Nearby in {property.location?.name || "Gujarat"}:
+              </span>
+              <div className="space-y-1.5">
+                {availability.alternative_properties.map((altProp: any) => (
+                  <Link
+                    key={altProp.id}
+                    href={`/property/${altProp.slug || altProp.id}?check_in=${checkIn}&check_out=${checkOut}&guests=${guests}&quantity=${quantity}`}
+                    className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 hover:border-brand-500 transition-colors text-xs"
+                  >
+                    <div>
+                      <p className="font-bold text-stone-900 line-clamp-1">{altProp.name}</p>
+                      <span className="text-[10px] text-stone-500">₹{altProp.price_per_night} / night</span>
+                    </div>
+                    <span className="text-brand-600 font-extrabold text-[11px] flex items-center">
+                      View →
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Coupon Code Input */}
           <div className="space-y-1.5">
@@ -706,6 +898,7 @@ export default function PropertyDetailPage() {
                 <span>
                   ₹{property.price_per_night.toLocaleString("en-IN")} × {pricing.nights} night
                   {pricing.nights > 1 ? "s" : ""}
+                  {quantity > 1 ? ` × ${quantity} rooms` : ""}
                 </span>
                 <span className="font-semibold text-stone-900">₹{pricing.stay_subtotal.toLocaleString("en-IN")}</span>
               </div>
@@ -752,20 +945,29 @@ export default function PropertyDetailPage() {
           )}
 
           {/* Reserve Button */}
-          <button
-            onClick={handleReserve}
-            disabled={reserving || calculatingPrice}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-brand-600 to-amber-500 hover:from-brand-700 hover:to-amber-600 text-white font-extrabold text-base shadow-xl shadow-brand-500/25 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
-          >
-            {reserving ? (
-              <span>Locking Reservation...</span>
-            ) : (
-              <>
-                <span>Reserve Gujarat Stay</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          {availability && !availability.is_available ? (
+            <button
+              disabled
+              className="w-full py-4 rounded-2xl bg-stone-200 text-stone-500 font-extrabold text-base cursor-not-allowed flex items-center justify-center space-x-2"
+            >
+              <span>{availability.availability_status === "sold_out" ? "Sold Out for Selected Dates" : "Unavailable for Selected Dates"}</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleReserve}
+              disabled={reserving || calculatingPrice}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-brand-600 to-amber-500 hover:from-brand-700 hover:to-amber-600 text-white font-extrabold text-base shadow-xl shadow-brand-500/25 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center space-x-2"
+            >
+              {reserving ? (
+                <span>Locking Reservation...</span>
+              ) : (
+                <>
+                  <span>Reserve Gujarat Stay</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          )}
 
           {/* Quick Contact & Host Chat in Booking Box */}
           <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs font-bold">

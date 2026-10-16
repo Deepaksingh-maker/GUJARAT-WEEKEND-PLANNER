@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Sparkles, 
   MapPin, 
@@ -21,9 +21,15 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import LocationAutocomplete from "@/components/LocationAutocomplete";
 
-export default function WeekendPlannerPage() {
+function WeekendPlannerContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
+
+  const queryDest = searchParams?.get("destination") || "";
+  const queryInterest = searchParams?.get("interest") || "";
+  const queryBudget = searchParams?.get("budget");
+  const queryGuests = searchParams?.get("guests");
 
   // Next weekend default dates
   const today = new Date();
@@ -32,12 +38,12 @@ export default function WeekendPlannerPage() {
   const nextSunday = new Date(nextFriday);
   nextSunday.setDate(nextSunday.getDate() + 2);
 
-  const [destination, setDestination] = useState("Saputara");
+  const [destination, setDestination] = useState(queryDest || "Saputara");
   const [dateStart, setDateStart] = useState(nextFriday.toISOString().split("T")[0]);
   const [dateEnd, setDateEnd] = useState(nextSunday.toISOString().split("T")[0]);
-  const [guests, setGuests] = useState(2);
-  const [budget, setBudget] = useState(15000);
-  const [interest, setInterest] = useState("Nature");
+  const [guests, setGuests] = useState(queryGuests ? Number(queryGuests) : 2);
+  const [budget, setBudget] = useState(queryBudget ? Number(queryBudget) : 15000);
+  const [interest, setInterest] = useState(queryInterest || "Nature");
 
   const [locations, setLocations] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
@@ -54,29 +60,44 @@ export default function WeekendPlannerPage() {
     { label: "Desert & Camping", value: "Camping", icon: "⛺" },
   ];
 
-  // Load locations on mount
+  // Load locations and auto-generate plan on mount or query change
   useEffect(() => {
     api.locations.getAll().then((res) => {
       if (res.success && res.data.length > 0) {
         setLocations(res.data);
       }
     });
-    // Auto generate initial plan
-    generatePlan();
-  }, []);
 
-  const generatePlan = async () => {
+    const targetDest = queryDest || destination;
+    const targetInterest = queryInterest || interest;
+    const targetBudget = queryBudget ? Number(queryBudget) : budget;
+    const targetGuests = queryGuests ? Number(queryGuests) : guests;
+
+    if (queryDest && queryDest !== destination) setDestination(queryDest);
+    if (queryInterest && queryInterest !== interest) setInterest(queryInterest);
+    if (queryBudget && Number(queryBudget) !== budget) setBudget(Number(queryBudget));
+    if (queryGuests && Number(queryGuests) !== guests) setGuests(Number(queryGuests));
+
+    executePlanGeneration(targetDest, targetInterest, targetBudget, targetGuests);
+  }, [queryDest, queryInterest, queryBudget, queryGuests]);
+
+  const executePlanGeneration = async (
+    dest: string,
+    intVal: string,
+    budVal: number,
+    gstVal: number
+  ) => {
     try {
       setLoading(true);
       setError(null);
 
       const res = await api.planner.generate({
-        destination,
+        destination: dest,
         date_start: dateStart,
         date_end: dateEnd,
-        guests: Number(guests),
-        budget: Number(budget),
-        interest,
+        guests: Number(gstVal),
+        budget: Number(budVal),
+        interest: intVal,
       });
 
       if (res.success && res.data.generated_plans) {
@@ -89,6 +110,10 @@ export default function WeekendPlannerPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const generatePlan = () => {
+    executePlanGeneration(destination, interest, budget, guests);
   };
 
   const handleBookPlan = async (plan: any) => {
@@ -398,5 +423,22 @@ export default function WeekendPlannerPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function WeekendPlannerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+          <div className="inline-flex items-center space-x-2 text-brand-600 font-bold text-sm animate-pulse">
+            <Sparkles className="w-5 h-5 animate-spin" />
+            <span>Loading Gujarat Weekend Planner...</span>
+          </div>
+        </div>
+      }
+    >
+      <WeekendPlannerContent />
+    </Suspense>
   );
 }

@@ -25,7 +25,7 @@ class User(Base):
 
     # Relationships
     host_profile = relationship("Host", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    bookings = relationship("Booking", back_populates="customer", cascade="all, delete-orphan")
+    bookings = relationship("Booking", foreign_keys="[Booking.customer_id]", back_populates="customer", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="customer", cascade="all, delete-orphan")
     wishlist_items = relationship("Wishlist", back_populates="customer", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")

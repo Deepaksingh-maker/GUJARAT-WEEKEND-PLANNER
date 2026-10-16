@@ -14,7 +14,8 @@ import {
   Calendar, 
   Users, 
   AlertCircle,
-  QrCode
+  QrCode,
+  ExternalLink
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { api } from "@/lib/api";
@@ -202,6 +203,17 @@ export default function CheckoutPage() {
             <div className="text-xs text-stone-600">
               <p className="font-bold text-stone-900">{confirmedBooking.property?.name}</p>
               <p>{confirmedBooking.check_in} to {confirmedBooking.check_out} ({confirmedBooking.guest_count} Guests)</p>
+            </div>
+            <div className="pt-2">
+              <Link
+                href={`/booking-pass/verify/${confirmedBooking.verification_token || confirmedBooking.booking_code}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full inline-flex items-center justify-center space-x-1.5 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-extrabold text-xs transition-colors shadow-md"
+              >
+                <span>Open Digital Booking Pass</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
             </div>
           </div>
         )}

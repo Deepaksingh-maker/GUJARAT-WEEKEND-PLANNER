@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = "secret_gujarat_key_simulation"
     RAZORPAY_SIMULATION_MODE: bool = True  # Allows full verifiable mock checkouts
     
+    # Frontend & Verification URL
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",

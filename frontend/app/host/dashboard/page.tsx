@@ -34,7 +34,8 @@ import {
   Phone,
   Lock,
   MessageSquare,
-  MessageCircle
+  MessageCircle,
+  QrCode
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -59,7 +60,7 @@ interface PropertyImageItem {
 
 export default function HostDashboardPage() {
   const { user, isHost, isAuthenticated, loading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "properties" | "bookings" | "messages" | "add_property">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "calendar" | "properties" | "bookings" | "messages" | "add_property">("overview");
 
   // Messaging & Controlled Contact State
   const [conversations, setConversations] = useState<any[]>([]);
@@ -79,6 +80,20 @@ export default function HostDashboardPage() {
   const [locations, setLocations] = useState<any[]>([]);
   const [amenities, setAmenities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Host Availability Calendar & Inventory Block State
+  const [calendarData, setCalendarData] = useState<any>(null);
+  const [selectedCalendarPropId, setSelectedCalendarPropId] = useState<number | null>(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [blockPropId, setBlockPropId] = useState<number>(0);
+  const [blockStartDate, setBlockStartDate] = useState("");
+  const [blockEndDate, setBlockEndDate] = useState("");
+  const [blockUnits, setBlockUnits] = useState(1);
+  const [blockReason, setBlockReason] = useState("Routine Maintenance");
+  const [blockSubmitting, setBlockSubmitting] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
+  const [blockSuccess, setBlockSuccess] = useState<string | null>(null);
 
   // Analytics State
   const [hostAnalytics, setHostAnalytics] = useState<any>(null);
@@ -192,6 +207,72 @@ export default function HostDashboardPage() {
       console.error("Error updating host analytics period:", err);
     } finally {
       setAnalyticsLoading(false);
+    }
+  };
+
+  // Availability Calendar & Blocks Handlers
+  const fetchCalendarData = async (propId?: number | null) => {
+    try {
+      setCalendarLoading(true);
+      const params: Record<string, any> = {};
+      if (propId) params.property_id = propId;
+      const res = await api.host.getAvailabilityCalendar(params);
+      if (res.success && res.data) {
+        setCalendarData(res.data);
+      }
+    } catch (err: any) {
+      console.error("Failed to load host calendar:", err);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "calendar") {
+      fetchCalendarData(selectedCalendarPropId);
+    }
+  }, [activeTab, selectedCalendarPropId]);
+
+  const handleCreateBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockPropId || !blockStartDate || !blockEndDate) {
+      setBlockError("Please select a property and date range.");
+      return;
+    }
+    try {
+      setBlockSubmitting(true);
+      setBlockError(null);
+      const res = await api.host.createInventoryBlock({
+        property_id: Number(blockPropId),
+        start_date: blockStartDate,
+        end_date: blockEndDate,
+        blocked_units: Number(blockUnits),
+        reason: blockReason,
+      });
+      if (res.success) {
+        setBlockSuccess("Dates successfully blocked for maintenance/personal use!");
+        setBlockModalOpen(false);
+        setBlockStartDate("");
+        setBlockEndDate("");
+        fetchCalendarData(selectedCalendarPropId);
+        setTimeout(() => setBlockSuccess(null), 4000);
+      }
+    } catch (err: any) {
+      setBlockError(err.message || "Failed to block dates. Confirmed bookings may occupy these dates.");
+    } finally {
+      setBlockSubmitting(false);
+    }
+  };
+
+  const handleUnblock = async (blockId: number) => {
+    if (!confirm("Are you sure you want to remove this block and reopen these dates for booking?")) return;
+    try {
+      const res = await api.host.deleteInventoryBlock(blockId);
+      if (res.success) {
+        fetchCalendarData(selectedCalendarPropId);
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to remove block");
     }
   };
 
@@ -554,6 +635,16 @@ export default function HostDashboardPage() {
           <span>📊 Earnings & Analytics</span>
         </button>
         <button
+          onClick={() => setActiveTab("calendar")}
+          className={`pb-4 transition-all whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === "calendar"
+              ? "border-b-2 border-emerald-600 text-emerald-700"
+              : "text-stone-500 hover:text-stone-800"
+          }`}
+        >
+          <span>📅 Availability & Blocks</span>
+        </button>
+        <button
           onClick={() => setActiveTab("properties")}
           className={`pb-4 transition-all whitespace-nowrap ${
             activeTab === "properties"
@@ -599,6 +690,16 @@ export default function HostDashboardPage() {
         >
           {editingPropertyId ? "Edit Property" : "+ Submit New Listing"}
         </button>
+
+        <Link
+          href="/scanner"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pb-4 transition-all whitespace-nowrap flex items-center gap-1.5 text-brand-600 hover:text-brand-800 font-bold ml-auto"
+        >
+          <QrCode className="w-4 h-4" />
+          <span>Pass Scanner (New Tab) ↗</span>
+        </Link>
       </div>
 
       {/* OVERVIEW TAB */}
@@ -818,6 +919,363 @@ export default function HostDashboardPage() {
               }}
               weekendSharePct={hostAnalytics.weekend_vs_weekday.weekend_percentage || 50}
             />
+          )}
+        </div>
+      )}
+
+      {/* AVAILABILITY CALENDAR & INVENTORY BLOCKS TAB */}
+      {activeTab === "calendar" && (
+        <div className="space-y-8">
+          {/* Calendar Header & Controls */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white rounded-3xl border border-stone-200 shadow-sm">
+            <div>
+              <div className="flex items-center space-x-2 text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">
+                <Calendar className="w-4 h-4" />
+                <span>Real-Time Stay Inventory</span>
+              </div>
+              <h2 className="text-2xl font-black text-stone-900 tracking-tight">
+                Availability Calendar & Host Inventory Controls
+              </h2>
+              <p className="text-xs text-stone-500 mt-1">
+                Visual night-by-night occupancy. Block dates for maintenance or personal stays with double-booking prevention.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={selectedCalendarPropId || ""}
+                onChange={(e) => setSelectedCalendarPropId(e.target.value ? Number(e.target.value) : null)}
+                className="px-3.5 py-2.5 rounded-xl border border-stone-300 text-xs font-bold text-stone-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">All My Properties ({properties.length})</option>
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.total_units || 1} units)
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (properties.length > 0) {
+                    setBlockPropId(selectedCalendarPropId || properties[0].id);
+                  }
+                  setBlockError(null);
+                  setBlockModalOpen(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center space-x-1.5"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>+ Block Dates (Maintenance / Personal)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Alert Banners */}
+          {blockSuccess && (
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center space-x-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>{blockSuccess}</span>
+            </div>
+          )}
+
+          {blockError && !blockModalOpen && (
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-bold text-rose-800 flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>{blockError}</span>
+            </div>
+          )}
+
+          {/* Color Legend */}
+          <div className="flex flex-wrap items-center gap-4 p-4 px-6 bg-stone-50 rounded-2xl border border-stone-200/80 text-xs font-bold text-stone-700">
+            <span className="text-stone-400 uppercase text-[10px] tracking-wider font-extrabold mr-2">Legend:</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-emerald-500" />
+              <span>Available</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-amber-500" />
+              <span>Limited Availability</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-rose-500" />
+              <span>Sold Out / Confirmed</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-full bg-stone-400" />
+              <span>Host Maintenance Block</span>
+            </div>
+          </div>
+
+          {/* Active Maintenance Blocks Section */}
+          {calendarData && calendarData.properties && (
+            <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-4">
+              <h3 className="font-extrabold text-base text-stone-900 flex items-center space-x-2">
+                <Lock className="w-4 h-4 text-stone-600" />
+                <span>Active Maintenance & Personal Use Blocks</span>
+              </h3>
+
+              {(() => {
+                const allBlocks = calendarData.properties.flatMap((p: any) =>
+                  (p.inventory_blocks || []).map((b: any) => ({
+                    ...b,
+                    propertyName: p.name,
+                    propertyTotalUnits: p.total_units || 1,
+                  }))
+                );
+
+                if (allBlocks.length === 0) {
+                  return (
+                    <p className="text-xs text-stone-500 italic py-2">
+                      No active maintenance blocks. All unbooked dates are open for guest reservations.
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-stone-200 text-stone-400 uppercase font-bold text-[10px]">
+                          <th className="pb-2">Property</th>
+                          <th className="pb-2">Date Range</th>
+                          <th className="pb-2">Blocked Units</th>
+                          <th className="pb-2">Reason</th>
+                          <th className="pb-2 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 font-semibold text-stone-800">
+                        {allBlocks.map((blk: any) => (
+                          <tr key={blk.id} className="hover:bg-stone-50">
+                            <td className="py-3 font-bold text-stone-900">{blk.propertyName}</td>
+                            <td className="py-3 text-stone-600">
+                              📅 {blk.start_date} → {blk.end_date}
+                            </td>
+                            <td className="py-3">
+                              <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 font-bold">
+                                {blk.blocked_units} of {blk.propertyTotalUnits} unit(s)
+                              </span>
+                            </td>
+                            <td className="py-3 text-stone-600">{blk.reason}</td>
+                            <td className="py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleUnblock(blk.id)}
+                                className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg border border-rose-200 transition-colors"
+                              >
+                                Reopen Dates
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Daily Calendar Grids */}
+          {calendarLoading ? (
+            <div className="p-12 text-center text-xs text-stone-500">
+              <Clock className="w-6 h-6 animate-spin mx-auto text-emerald-600 mb-2" />
+              <span>Calculating live 30-day inventory from database...</span>
+            </div>
+          ) : calendarData && calendarData.properties ? (
+            <div className="space-y-6">
+              {calendarData.properties.map((propCal: any) => (
+                <div key={propCal.id} className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-stone-100">
+                    <div>
+                      <h4 className="font-extrabold text-base text-stone-900">{propCal.name}</h4>
+                      <p className="text-xs text-stone-500">
+                        Total Capacity: {propCal.total_units} unit{propCal.total_units > 1 ? "s" : ""} • Instant Confirm active
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+                      Live SQLite Inventory
+                    </span>
+                  </div>
+
+                  {/* 30-Day Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-10 gap-2">
+                    {propCal.days.map((day: any) => {
+                      const isFull = day.available_units === 0;
+                      const isBlocked = day.blocked_units > 0;
+                      const isLimited = day.available_units > 0 && day.available_units < propCal.total_units;
+                      const isFree = day.available_units === propCal.total_units;
+
+                      let cellBg = "bg-emerald-50 border-emerald-200 text-emerald-900";
+                      if (isFull && !isBlocked) cellBg = "bg-rose-50 border-rose-200 text-rose-900";
+                      else if (isBlocked && isFull) cellBg = "bg-stone-100 border-stone-300 text-stone-700";
+                      else if (isLimited) cellBg = "bg-amber-50 border-amber-200 text-amber-900";
+
+                      return (
+                        <div
+                          key={day.date}
+                          className={`p-2.5 rounded-xl border flex flex-col justify-between text-xs transition-transform hover:scale-105 ${cellBg}`}
+                        >
+                          <div className="flex justify-between items-center text-[10px] font-bold opacity-75">
+                            <span>{new Date(day.date).toLocaleDateString("en-IN", { weekday: "short" })}</span>
+                            <span>{new Date(day.date).getDate()}</span>
+                          </div>
+
+                          <div className="mt-1 font-extrabold text-[11px]">
+                            {isBlocked && day.available_units === 0 ? (
+                              <span className="text-stone-600">Blocked</span>
+                            ) : isFull ? (
+                              <span className="text-rose-600">Sold Out</span>
+                            ) : (
+                              <span>{day.available_units} / {propCal.total_units} Free</span>
+                            )}
+                          </div>
+
+                          {day.confirmed_units > 0 && (
+                            <div className="text-[9px] font-medium opacity-80 mt-0.5">
+                              {day.confirmed_units} Booked
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center bg-white rounded-3xl border border-stone-200 text-xs text-stone-500">
+              No calendar data available.
+            </div>
+          )}
+
+          {/* Block Dates Modal */}
+          {blockModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 border border-stone-200 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                  <div className="flex items-center space-x-2 text-stone-900 font-extrabold text-lg">
+                    <Lock className="w-5 h-5 text-emerald-600" />
+                    <span>Block Dates for Maintenance</span>
+                  </div>
+                  <button
+                    onClick={() => setBlockModalOpen(false)}
+                    className="p-1 rounded-full text-stone-400 hover:text-stone-800"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {blockError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{blockError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleCreateBlock} className="space-y-4 text-xs font-bold text-stone-700">
+                  {/* Property Selector */}
+                  <div className="space-y-1">
+                    <label className="block text-stone-600">Select Property</label>
+                    <select
+                      value={blockPropId}
+                      onChange={(e) => setBlockPropId(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+                      required
+                    >
+                      {properties.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.total_units || 1} units)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Dates */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-stone-600">Start Date</label>
+                      <input
+                        type="date"
+                        min={new Date().toISOString().split("T")[0]}
+                        value={blockStartDate}
+                        onChange={(e) => setBlockStartDate(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-stone-600">End Date</label>
+                      <input
+                        type="date"
+                        min={blockStartDate || new Date().toISOString().split("T")[0]}
+                        value={blockEndDate}
+                        onChange={(e) => setBlockEndDate(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Units to Block */}
+                  <div className="space-y-1">
+                    <label className="block text-stone-600">Units / Rooms to Block</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={properties.find((p) => p.id === blockPropId)?.total_units || 1}
+                      value={blockUnits}
+                      onChange={(e) => setBlockUnits(Math.max(1, Number(e.target.value)))}
+                      className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+                      required
+                    />
+                    <span className="text-[10px] text-stone-400 font-normal">
+                      Cannot exceed property's total inventory.
+                    </span>
+                  </div>
+
+                  {/* Reason */}
+                  <div className="space-y-1">
+                    <label className="block text-stone-600">Reason for Blocking</label>
+                    <select
+                      value={blockReason}
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+                    >
+                      <option value="Routine Maintenance">Routine Maintenance & Repairs</option>
+                      <option value="Host Personal Stay">Host Personal Stay / Family Gathering</option>
+                      <option value="Painting & Deep Renovation">Painting & Deep Renovation</option>
+                      <option value="Pool Cleaning & Sanitization">Pool Cleaning & Sanitization</option>
+                      <option value="Off-Season Weather Closure">Off-Season / Monsoon Closure</option>
+                      <option value="Private Event Booking">Offline / Direct Private Booking</option>
+                    </select>
+                  </div>
+
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 font-medium leading-relaxed">
+                    ⚠️ <strong>Notice:</strong> The server automatically rejects blocks if existing confirmed reservations occupy the requested dates.
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex items-center justify-end space-x-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setBlockModalOpen(false)}
+                      className="px-4 py-2.5 rounded-xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={blockSubmitting}
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                    >
+                      {blockSubmitting ? "Locking Dates..." : "Confirm Inventory Block"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1109,10 +1567,13 @@ export default function HostDashboardPage() {
 
                           <td className="py-3.5 px-4 space-y-1">
                             <Link
-                              href={`/bookings/${b.booking_code}`}
-                              className="text-brand-600 font-bold hover:underline block text-xs"
+                              href={`/booking-pass/verify/${b.verification_token || b.booking_code}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-600 font-bold hover:underline block text-xs flex items-center gap-1"
                             >
-                              QR Pass →
+                              <span>Digital Pass (New Tab)</span>
+                              <span>↗</span>
                             </Link>
                           </td>
                         </tr>

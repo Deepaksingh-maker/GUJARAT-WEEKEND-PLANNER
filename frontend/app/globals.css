@@ -40,3 +40,24 @@
 .animate-spin-slow {
   animation: spin-slow 20s linear infinite;
 }
+
+/* Dedicated Clean Ticket Print Styles for A4 Paper & PDF */
+@media print {
+  body {
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  nav, footer, .print\:hidden {
+    display: none !important;
+  }
+  #digital-booking-pass-card {
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    max-width: 600px !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

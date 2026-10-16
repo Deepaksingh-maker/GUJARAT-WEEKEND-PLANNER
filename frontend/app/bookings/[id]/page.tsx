@@ -16,7 +16,8 @@ import {
   Home,
   MessageSquare,
   Lock,
-  Phone
+  Phone,
+  ExternalLink
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -270,6 +271,18 @@ export default function BookingPassPage() {
             <p className="text-[11px] font-mono text-stone-500 font-bold">
               ID: {booking.booking_code} • Total Paid: ₹{booking.total.toLocaleString("en-IN")}
             </p>
+
+            <div className="pt-2">
+              <Link
+                href={`/booking-pass/verify/${booking.verification_token || booking.booking_code}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs transition-colors shadow-sm"
+              >
+                <span>View Digital Booking Pass</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           </div>
 
           {/* CONTROLLED CONTACT SYSTEM */}

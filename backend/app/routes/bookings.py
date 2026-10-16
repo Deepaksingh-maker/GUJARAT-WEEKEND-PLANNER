@@ -2,7 +2,7 @@ import urllib.parse
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 from backend.app.database import get_db
 from backend.app.models.user import User, UserRole
@@ -11,10 +11,10 @@ from backend.app.models.review import Review
 from backend.app.schemas.booking import (
     BookingCreateRequest, BookingResponse, PriceBreakdownRequest,
     PriceBreakdownResponse, BookingCancelRequest, BookingPropertySummary,
-    BookingCustomerSummary, BookingItemResponse
+    BookingCustomerSummary, BookingItemResponse, DigitalPassResponse, CheckInResponse
 )
 from backend.app.schemas.common import ApiResponse
-from backend.app.auth.dependencies import get_current_user, require_customer
+from backend.app.auth.dependencies import get_current_user, get_optional_user, require_customer
 from backend.app.services.booking_service import booking_service
 
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
@@ -118,6 +118,8 @@ def build_booking_response(b: Booking, db: Session, current_user: Optional[User]
         check_in=b.check_in,
         check_out=b.check_out,
         guest_count=b.guest_count,
+        quantity=getattr(b, "quantity", 1) or 1,
+        hold_expires_at=getattr(b, "hold_expires_at", None),
         subtotal=b.subtotal,
         cleaning_fee=b.cleaning_fee,
         tax=b.tax,
@@ -129,6 +131,9 @@ def build_booking_response(b: Booking, db: Session, current_user: Optional[User]
         qr_code_data=b.qr_code_data,
         special_requests=b.special_requests,
         coupon_code=b.coupon_code,
+        verification_token=getattr(b, "verification_token", None),
+        is_checked_in=bool(getattr(b, "is_checked_in", False)),
+        checked_in_at=getattr(b, "checked_in_at", None),
         created_at=b.created_at,
         updated_at=b.updated_at,
         property=prop_summary,
@@ -152,6 +157,7 @@ def calculate_price(
             check_in=req.check_in,
             check_out=req.check_out,
             guest_count=req.guest_count,
+            quantity=getattr(req, "quantity", 1) or 1,
             coupon_code=req.coupon_code,
             activities=req.activities
         )
@@ -256,21 +262,204 @@ def cancel_booking(
         data=build_booking_response(cancelled_booking, db, current_user)
     )
 
-@router.get("/verify-pass/{booking_code}", response_model=ApiResponse[BookingResponse])
-def verify_qr_pass(
-    booking_code: str,
+def find_booking_by_token_or_code(db: Session, token_or_code: str) -> Optional[Booking]:
+    """Helper to locate a booking by verification_token, booking_code, or ID."""
+    key = token_or_code.strip()
+    # 1. Match by verification_token
+    b = db.query(Booking).filter(Booking.verification_token == key).first()
+    if b:
+        return b
+    # 2. Match by booking_code (case-insensitive)
+    b = db.query(Booking).filter(func.upper(Booking.booking_code) == key.upper()).first()
+    if b:
+        return b
+    # 3. Match by ID if numeric
+    if key.isdigit():
+        return db.query(Booking).filter(Booking.id == int(key)).first()
+    return None
+
+def build_digital_pass_response(booking: Booking, db: Session, current_user: Optional[User] = None) -> DigitalPassResponse:
+    from backend.app.services.qr_service import build_verification_url, generate_booking_qr_code, generate_verification_token
+    
+    # Ensure verification_token exists on DB record
+    if not booking.verification_token:
+        booking.verification_token = generate_verification_token()
+        db.commit()
+        db.refresh(booking)
+
+    prop_name = booking.property.name if booking.property else "Gujarat Stay"
+    prop_slug = booking.property.slug if booking.property else None
+    prop_type = booking.property.property_type.value if booking.property and hasattr(booking.property.property_type, "value") else str(booking.property.property_type if booking.property else "Villa")
+    prop_loc = booking.property.location.name if booking.property and booking.property.location else "Gujarat"
+    prop_addr = booking.property.address if booking.property else "Gujarat, India"
+    
+    primary_img = None
+    if booking.property:
+        primary_img = next((img.image_url for img in booking.property.images if img.is_primary), None)
+        if not primary_img and booking.property.images:
+            primary_img = booking.property.images[0].image_url
+
+    guest_name = booking.customer.full_name if booking.customer else "Valued Guest"
+    
+    nights = 1
+    if booking.check_in and booking.check_out:
+        delta = (booking.check_out - booking.check_in).days
+        nights = max(1, delta)
+
+    status_str = booking.status.value if hasattr(booking.status, "value") else str(booking.status)
+    is_valid = status_str == "confirmed"
+
+    if status_str == "confirmed":
+        if booking.is_checked_in:
+            verification_msg = "Booking Confirmed • Guest Already Checked In"
+        else:
+            verification_msg = "Valid Confirmed Booking Pass • Ready for Check-in"
+    elif status_str in ["cancelled", "refunded"]:
+        verification_msg = "Booking Cancelled • Pass Invalid for Check-in"
+    elif status_str in ["pending", "payment_pending"]:
+        verification_msg = "Booking Pending • Confirmation / Payment Required"
+    elif status_str == "expired":
+        verification_msg = "Booking Expired • Pass Invalid for Check-in"
+    else:
+        verification_msg = f"Booking Status: {status_str.title()}"
+
+    # Permission check for check-in action
+    is_host_or_admin = False
+    can_check_in = False
+    if current_user:
+        if current_user.role == UserRole.ADMIN:
+            is_host_or_admin = True
+        elif booking.property and current_user.host_profile:
+            if booking.property.host_id == current_user.host_profile.id:
+                is_host_or_admin = True
+        
+        if is_host_or_admin and is_valid and not booking.is_checked_in:
+            can_check_in = True
+
+    checked_in_by_name = None
+    if booking.checked_in_by:
+        checked_in_by_name = booking.checked_in_by.full_name
+
+    verification_url = build_verification_url(booking.verification_token)
+    
+    qr_data = booking.qr_code_data
+    if not qr_data or not qr_data.startswith("data:image/png;base64,"):
+        qr_data = generate_booking_qr_code(booking.verification_token)
+        booking.qr_code_data = qr_data
+        db.commit()
+
+    return DigitalPassResponse(
+        is_valid=is_valid,
+        status=status_str,
+        booking_code=booking.booking_code,
+        booking_id=booking.id,
+        verification_token=booking.verification_token,
+        verification_url=verification_url,
+        property_name=prop_name,
+        property_slug=prop_slug,
+        property_type=prop_type,
+        property_image=primary_img,
+        property_location=prop_loc,
+        property_address=prop_addr,
+        guest_name=guest_name,
+        guest_count=booking.guest_count,
+        check_in=booking.check_in,
+        check_out=booking.check_out,
+        nights=nights,
+        total_amount=booking.total,
+        confirmed_at=booking.updated_at if is_valid else None,
+        created_at=booking.created_at,
+        qr_code_data=qr_data,
+        is_checked_in=bool(booking.is_checked_in),
+        checked_in_at=booking.checked_in_at,
+        checked_in_by_name=checked_in_by_name,
+        can_check_in=can_check_in,
+        is_host_or_admin=is_host_or_admin,
+        verification_message=verification_msg
+    )
+
+@router.get("/verify-pass/{token_or_code}", response_model=ApiResponse[DigitalPassResponse])
+def verify_digital_booking_pass(
+    token_or_code: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Publicly verifies a booking pass by secure token, booking reference code, or ID.
+    Always retrieves the live booking status from the database.
+    If authenticated as the property host or admin, check-in controls are enabled.
+    """
+    booking = find_booking_by_token_or_code(db, token_or_code)
+    if not booking:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid booking pass: No booking found matching this reference or token."
+        )
+
+    pass_data = build_digital_pass_response(booking, db, current_user)
+    
+    return ApiResponse(
+        success=True,
+        message=pass_data.verification_message,
+        data=pass_data
+    )
+
+@router.post("/{token_or_code}/check-in", response_model=ApiResponse[CheckInResponse])
+def check_in_guest(
+    token_or_code: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Host or Admin can scan a customer's QR pass on check-in to verify booking authenticity.
+    Authorized Host or Admin marks a confirmed booking as checked-in at property arrival.
+    Unauthorized users cannot perform check-ins.
     """
-    booking = db.query(Booking).filter(Booking.booking_code == booking_code.upper()).first()
+    from datetime import datetime, timezone
+
+    booking = find_booking_by_token_or_code(db, token_or_code)
     if not booking:
-        raise HTTPException(status_code=404, detail="Invalid booking QR pass")
+        raise HTTPException(status_code=404, detail="Booking not found for check-in")
+
+    is_admin = current_user.role == UserRole.ADMIN
+    is_host = False
+    if booking.property and current_user.host_profile:
+        is_host = booking.property.host_id == current_user.host_profile.id
+
+    if not (is_admin or is_host):
+        raise HTTPException(
+            status_code=403, 
+            detail="Unauthorized: Only the property host or an administrator can mark bookings as checked-in"
+        )
+
+    if booking.status != BookingStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot check in: Booking is currently {booking.status.value.upper()}. Only confirmed bookings can be checked in."
+        )
+
+    if booking.is_checked_in:
+        time_str = booking.checked_in_at.strftime("%d %b %Y, %I:%M %p") if booking.checked_in_at else "previously"
+        raise HTTPException(
+            status_code=400, 
+            detail=f"This booking has already been checked in at {time_str}."
+        )
+
+    now = datetime.now(timezone.utc)
+    booking.is_checked_in = True
+    booking.checked_in_at = now
+    booking.checked_in_by_user_id = current_user.id
+    db.commit()
+    db.refresh(booking)
 
     return ApiResponse(
         success=True,
-        message="Valid Gujarat Weekend Booking Pass",
-        data=build_booking_response(booking, db, current_user)
+        message=f"Check-in verified successfully for {booking.customer.full_name if booking.customer else 'Guest'}!",
+        data=CheckInResponse(
+            success=True,
+            message="Guest checked in successfully",
+            booking_code=booking.booking_code,
+            is_checked_in=True,
+            checked_in_at=booking.checked_in_at,
+            checked_in_by=current_user.full_name
+        )
     )

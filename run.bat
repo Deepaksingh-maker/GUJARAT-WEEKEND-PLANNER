@@ -4,7 +4,7 @@ echo Starting Gujarat Weekend Full Stack Project
 echo ==================================================
 
 REM Start Backend
-start "Backend (FastAPI - Port 8000)" cmd /k "cd /d "%~dp0" && call .\venv\Scripts\activate.bat && python backend\run.py"
+start "Backend (FastAPI - Port 8000)" cmd /k "cd /d "%~dp0" && ".\venv\Scripts\python.exe" backend\run.py"
 
 REM Start Frontend
 start "Frontend (Next.js - Port 3000)" cmd /k "cd /d "%~dp0frontend" && npm run dev:frontend"

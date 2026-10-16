@@ -24,7 +24,7 @@ from backend.app.schemas.property import (
     PropertyCreate, PropertyUpdate, PropertyResponse, PropertyDetailResponse,
     AvailabilityCheckRequest, AvailabilityCheckResponse, AvailabilitySetRequest,
     AvailabilityResponse, AmenityResponse, PropertyImageResponse,
-    PropertyImageCreate, PropertyImageUpdate
+    PropertyImageCreate, PropertyImageUpdate, AvailabilityDetailResponse
 )
 from backend.app.schemas.common import ApiResponse
 from backend.app.auth.dependencies import get_current_user, get_optional_user, require_host
@@ -88,7 +88,12 @@ def verify_host_property_access(property_id: int, current_user: User, db: Sessio
             
     return prop
 
-def build_property_response(prop: Property, current_user: Optional[User] = None, db: Optional[Session] = None) -> PropertyResponse:
+def build_property_response(
+    prop: Property, 
+    current_user: Optional[User] = None, 
+    db: Optional[Session] = None,
+    availability_info: Optional[dict] = None
+) -> PropertyResponse:
     amenities = [pa.amenity for pa in prop.amenities if pa.amenity]
     amenities_data = [AmenityResponse.model_validate(a) for a in amenities]
     
@@ -106,6 +111,30 @@ def build_property_response(prop: Property, current_user: Optional[User] = None,
         ).first()
         is_wishlisted = wl is not None
 
+    total_units_val = getattr(prop, "total_units", 1) or 1
+
+    # Extract availability details
+    if availability_info:
+        avail_status = availability_info.get("availability_status", "select_dates")
+        avail_units = availability_info.get("available_units")
+        booked_units = availability_info.get("booked_units")
+        blocked_units = availability_info.get("blocked_units")
+        is_avail = availability_info.get("is_available")
+        avail_msg = availability_info.get("message")
+    else:
+        if prop.verification_status != ApprovalStatus.APPROVED or not prop.booking_enabled:
+            avail_status = "unavailable"
+            is_avail = False
+            avail_units = 0
+            avail_msg = "Property is temporarily unavailable"
+        else:
+            avail_status = "select_dates"
+            is_avail = None
+            avail_units = total_units_val
+            avail_msg = "Select dates to check availability"
+        booked_units = 0
+        blocked_units = 0
+
     prop_resp = PropertyResponse(
         id=prop.id,
         slug=prop.slug,
@@ -119,6 +148,7 @@ def build_property_response(prop: Property, current_user: Optional[User] = None,
         max_guests=prop.max_guests,
         bedrooms=prop.bedrooms,
         bathrooms=prop.bathrooms,
+        total_units=total_units_val,
         address=prop.address,
         latitude=prop.latitude,
         longitude=prop.longitude,
@@ -135,6 +165,12 @@ def build_property_response(prop: Property, current_user: Optional[User] = None,
         verified_at=getattr(prop, "verified_at", "2026-09-30"),
         created_at=prop.created_at,
         updated_at=prop.updated_at,
+        availability_status=avail_status,
+        available_units=avail_units,
+        booked_units=booked_units,
+        blocked_units=blocked_units,
+        is_available=is_avail,
+        availability_message=avail_msg,
         location={
             "id": prop.location.id,
             "name": prop.location.name,
@@ -163,10 +199,14 @@ def build_property_response(prop: Property, current_user: Optional[User] = None,
 @router.get("", response_model=ApiResponse[List[PropertyResponse]])
 def get_properties(
     location: Optional[str] = Query(None, description="Location slug or name in Gujarat"),
+    destination: Optional[str] = Query(None, description="Alias for location"),
+    check_in: Optional[date] = None,
+    check_out: Optional[date] = None,
+    guests: Optional[int] = None,
+    quantity: Optional[int] = Query(1, ge=1),
     property_type: Optional[PropertyType] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
-    guests: Optional[int] = None,
     bedrooms: Optional[int] = None,
     pool: Optional[bool] = None,
     wifi: Optional[bool] = None,
@@ -174,16 +214,29 @@ def get_properties(
     pet_friendly: Optional[bool] = None,
     sort_by: Optional[str] = Query("recommended", description="recommended, price_asc, price_desc, rating, newest"),
     is_featured: Optional[bool] = None,
+    include_unavailable: bool = Query(False, description="Include sold out or unavailable stays"),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user)
 ):
+    # Validation if dates provided
+    today = date.today()
+    if check_in and check_in < today:
+        raise HTTPException(status_code=400, detail="Check-in date cannot be in the past")
+    if check_in and check_out and check_out <= check_in:
+        raise HTTPException(status_code=400, detail="Check-out date must be strictly after check-in date")
+    if guests is not None and guests <= 0:
+        raise HTTPException(status_code=400, detail="Guest count must be positive")
+    if quantity is not None and quantity <= 0:
+        raise HTTPException(status_code=400, detail="Requested quantity must be positive")
+
     query = db.query(Property).filter(
         Property.verification_status == ApprovalStatus.APPROVED,
         Property.booking_enabled == True
     )
 
-    if location and location.lower() != "all":
-        loc_term = location.strip()
+    loc_param = destination or location
+    if loc_param and loc_param.lower() != "all":
+        loc_term = loc_param.strip()
         clean_loc = loc_term.lower()
 
         # Strictly reject queries matching outside Gujarat cities or states
@@ -271,12 +324,80 @@ def get_properties(
     elif sort_by == "newest":
         query = query.order_by(desc(Property.created_at))
     else:
-        # Recommended: featured first then newest
         query = query.order_by(desc(Property.is_featured), desc(Property.created_at))
 
     properties = query.all()
-    results = [build_property_response(p, current_user, db) for p in properties]
-    return ApiResponse(success=True, data=results)
+    
+    results = []
+    guest_val = guests if guests else 1
+    qty_val = quantity if quantity else 1
+
+    for p in properties:
+        if check_in and check_out:
+            avail_info = availability_service.calculate_property_availability(
+                db=db,
+                property_id=p.id,
+                check_in=check_in,
+                check_out=check_out,
+                guest_count=guest_val,
+                quantity=qty_val
+            )
+            if not include_unavailable and not avail_info["is_available"]:
+                continue
+            results.append(build_property_response(p, current_user, db, availability_info=avail_info))
+        else:
+            results.append(build_property_response(p, current_user, db))
+
+    dest_str = f" in {loc_param}" if loc_param else ""
+    dates_str = f" for {check_in.strftime('%d %b')} – {check_out.strftime('%d %b')}" if (check_in and check_out) else ""
+    msg = f"{len(results)} stays available{dest_str}{dates_str}." if len(results) > 0 else "No stays are available for your selected dates."
+    return ApiResponse(success=True, data=results, message=msg)
+
+@router.get("/search", response_model=ApiResponse[List[PropertyResponse]])
+def search_properties(
+    destination: Optional[str] = Query(None, description="Gujarat destination, city, or district"),
+    location: Optional[str] = Query(None, description="Alias for destination"),
+    check_in: Optional[date] = None,
+    check_out: Optional[date] = None,
+    guests: int = Query(1, ge=1),
+    quantity: int = Query(1, ge=1),
+    property_type: Optional[PropertyType] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    pool: Optional[bool] = None,
+    wifi: Optional[bool] = None,
+    parking: Optional[bool] = None,
+    pet_friendly: Optional[bool] = None,
+    sort_by: Optional[str] = Query("recommended"),
+    include_unavailable: bool = Query(False, description="Include sold out or blocked stays"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    """
+    Search endpoint adhering to section 2 & 10 of Stay Availability specification.
+    Returns matching properties and their computed availability for requested dates.
+    """
+    return get_properties(
+        location=destination or location,
+        destination=destination or location,
+        check_in=check_in,
+        check_out=check_out,
+        guests=guests,
+        quantity=quantity,
+        property_type=property_type,
+        min_price=min_price,
+        max_price=max_price,
+        bedrooms=None,
+        pool=pool,
+        wifi=wifi,
+        parking=parking,
+        pet_friendly=pet_friendly,
+        sort_by=sort_by,
+        is_featured=None,
+        include_unavailable=include_unavailable,
+        db=db,
+        current_user=current_user
+    )
 
 @router.get("/amenities", response_model=ApiResponse[List[AmenityResponse]])
 def get_amenities_list(db: Session = Depends(get_db)):
@@ -284,6 +405,63 @@ def get_amenities_list(db: Session = Depends(get_db)):
     return ApiResponse(
         success=True,
         data=[AmenityResponse.model_validate(a) for a in amenities]
+    )
+
+@router.get("/{id_or_slug}/availability", response_model=ApiResponse[AvailabilityDetailResponse])
+def get_property_availability(
+    id_or_slug: str,
+    check_in: Optional[date] = None,
+    check_out: Optional[date] = None,
+    guests: int = Query(1, ge=1),
+    quantity: int = Query(1, ge=1),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint GET /api/properties/{property_id}/availability
+    Returns detailed availability, night-by-night breakdown, and pricing.
+    """
+    if id_or_slug.isdigit():
+        prop = db.query(Property).filter(Property.id == int(id_or_slug)).first()
+    else:
+        prop = db.query(Property).filter(Property.slug == id_or_slug.lower()).first()
+
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    res = availability_service.calculate_property_availability(
+        db=db,
+        property_id=prop.id,
+        check_in=check_in,
+        check_out=check_out,
+        guest_count=guests,
+        quantity=quantity
+    )
+
+    return ApiResponse(
+        success=True,
+        data=AvailabilityDetailResponse(
+            is_available=res["is_available"],
+            property_id=prop.id,
+            property_name=prop.name,
+            check_in=check_in,
+            check_out=check_out,
+            guests=guests,
+            quantity=quantity,
+            total_units=res["total_units"],
+            available_units=res["available_units"],
+            booked_units=res["booked_units"],
+            blocked_units=res["blocked_units"],
+            availability_status=res["availability_status"],
+            requested_dates=res["requested_dates"],
+            night_breakdown=res["night_breakdown"],
+            stay_price=res["stay_price"],
+            cleaning_fee=res["cleaning_fee"],
+            tax=res["tax"],
+            total_price=res["total_price"],
+            message=res["message"],
+            alternative_dates=res.get("alternative_dates", []),
+            alternative_properties=res.get("alternative_properties", [])
+        )
     )
 
 @router.get("/{id_or_slug}", response_model=ApiResponse[PropertyDetailResponse])
@@ -342,39 +520,39 @@ def check_availability(
     req: AvailabilityCheckRequest,
     db: Session = Depends(get_db)
 ):
-    is_avail, message, nights = availability_service.check_property_availability(
+    qty = getattr(req, "quantity", 1) or 1
+    res = availability_service.calculate_property_availability(
         db=db,
         property_id=req.property_id,
         check_in=req.check_in,
         check_out=req.check_out,
-        guest_count=req.guests
+        guest_count=req.guests,
+        quantity=qty
     )
 
     prop = db.query(Property).filter(Property.id == req.property_id).first()
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    subtotal, cleaning_fee, _ = availability_service.calculate_stay_cost(
-        db, req.property_id, req.check_in, req.check_out
-    )
-    nights_count = len(nights) if nights else max(1, (req.check_out - req.check_in).days)
-    tax = round((subtotal + cleaning_fee) * 0.12, 2)
-    total_price = round(subtotal + cleaning_fee + tax, 2)
+    nights_count = len(res["requested_dates"]) if res["requested_dates"] else max(1, (req.check_out - req.check_in).days)
 
     return ApiResponse(
         success=True,
         data=AvailabilityCheckResponse(
-            available=is_avail,
+            available=res["is_available"],
             property_id=req.property_id,
             check_in=req.check_in,
             check_out=req.check_out,
             nights=nights_count,
             price_per_night=prop.price_per_night,
-            base_price=subtotal,
-            cleaning_fee=cleaning_fee,
-            tax=tax,
-            total_price=total_price,
-            message=message
+            base_price=res["stay_price"],
+            cleaning_fee=res["cleaning_fee"],
+            tax=res["tax"],
+            total_price=res["total_price"],
+            message=res["message"],
+            availability_status=res["availability_status"],
+            available_units=res["available_units"],
+            total_units=res["total_units"]
         )
     )
 

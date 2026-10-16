@@ -54,7 +54,21 @@ export const api = {
       });
       return request<any>(`/properties?${search.toString()}`);
     },
+    search: (params: Record<string, any> = {}) => {
+      const search = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") search.append(k, String(v));
+      });
+      return request<any>(`/properties/search?${search.toString()}`);
+    },
     get: (idOrSlug: string) => request<any>(`/properties/${idOrSlug}`),
+    getAvailability: (idOrSlug: string | number, params: Record<string, any> = {}) => {
+      const search = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") search.append(k, String(v));
+      });
+      return request<any>(`/properties/${idOrSlug}/availability?${search.toString()}`);
+    },
     checkAvailability: (data: any) => request<any>("/properties/check-availability", { method: "POST", body: JSON.stringify(data) }),
     create: (data: any) => request<any>("/properties", { method: "POST", body: JSON.stringify(data) }),
     update: (id: number, data: any) => request<any>(`/properties/${id}`, { method: "PUT", body: JSON.stringify(data) }),
@@ -94,7 +108,8 @@ export const api = {
     getMyBookings: () => request<any>("/bookings"),
     getDetail: (idOrCode: string) => request<any>(`/bookings/${idOrCode}`),
     cancel: (id: number, reason: string) => request<any>(`/bookings/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
-    verifyPass: (code: string) => request<any>(`/bookings/verify-pass/${code}`),
+    verifyPass: (tokenOrCode: string) => request<any>(`/bookings/verify-pass/${encodeURIComponent(tokenOrCode)}`),
+    checkIn: (tokenOrCode: string) => request<any>(`/bookings/${encodeURIComponent(tokenOrCode)}/check-in`, { method: "POST" }),
   },
   payments: {
     getConfig: () => request<any>("/payments/config"),
@@ -125,6 +140,17 @@ export const api = {
     getProperties: () => request<any>("/host/properties"),
     getActivities: () => request<any>("/host/activities"),
     getBookings: () => request<any>("/host/bookings"),
+    getAvailabilityCalendar: (params: Record<string, any> = {}) => {
+      const search = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") search.append(k, String(v));
+      });
+      return request<any>(`/host/availability-calendar?${search.toString()}`);
+    },
+    createInventoryBlock: (data: { property_id: number; start_date: string; end_date: string; blocked_units?: number; reason: string }) =>
+      request<any>("/host/inventory-blocks", { method: "POST", body: JSON.stringify(data) }),
+    deleteInventoryBlock: (blockId: number) =>
+      request<any>(`/host/inventory-blocks/${blockId}`, { method: "DELETE" }),
   },
   admin: {
     getDashboard: () => request<any>("/admin/dashboard"),
@@ -168,7 +194,7 @@ export const api = {
       return request<any>(`/messages/thread?${q.toString()}`);
     },
     getConversations: () => request<any>("/messages/conversations"),
-    send: (data: { receiver_id: number; property_id?: number; booking_id?: number; message: string }) => 
+    send: (data: { receiver_id: number; property_id?: number; booking_id?: number; message: string }) =>
       request<any>("/messages", { method: "POST", body: JSON.stringify(data) }),
   },
 };

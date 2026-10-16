@@ -21,6 +21,10 @@ interface PropertyProps {
     average_rating: number;
     reviews_count: number;
     is_wishlisted?: boolean;
+    total_units?: number;
+    available_units?: number;
+    availability_status?: "available" | "sold_out" | "limited_availability" | "select_dates" | "unavailable" | string;
+    availability_message?: string;
     location?: {
       name: string;
       slug: string;
@@ -67,10 +71,63 @@ export default function PropertyCard({ property, onWishlistChange }: PropertyPro
     }
   };
 
+  const status = property.availability_status || "select_dates";
+  const isSoldOut = status === "sold_out";
+  const isUnavailable = status === "unavailable";
+  const isLimited = status === "limited_availability";
+  const isAvailable = status === "available";
+
+  const renderAvailabilityBadge = () => {
+    if (isAvailable) {
+      return (
+        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-600/90 backdrop-blur-md text-white text-xs font-semibold shadow-sm border border-emerald-400/30">
+          <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+          <span>Available</span>
+        </div>
+      );
+    }
+    if (isLimited) {
+      const unitsText = property.available_units !== undefined
+        ? `Only ${property.available_units} left!`
+        : "Limited Availability";
+      return (
+        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/90 backdrop-blur-md text-white text-xs font-bold shadow-sm border border-amber-300/40">
+          <span className="w-2 h-2 rounded-full bg-amber-200 animate-ping" />
+          <span>{unitsText}</span>
+        </div>
+      );
+    }
+    if (isSoldOut) {
+      return (
+        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-rose-600/90 backdrop-blur-md text-white text-xs font-bold shadow-sm border border-rose-300/40">
+          <span className="w-2 h-2 rounded-full bg-rose-200" />
+          <span>Sold Out</span>
+        </div>
+      );
+    }
+    if (isUnavailable) {
+      return (
+        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-sky-700/90 backdrop-blur-md text-white text-xs font-semibold shadow-sm border border-sky-400/30">
+          <span className="w-2 h-2 rounded-full bg-sky-300" />
+          <span>Unavailable</span>
+        </div>
+      );
+    }
+    // Default: Select Dates
+    return (
+      <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-stone-900/60 backdrop-blur-md text-stone-200 text-xs font-medium border border-white/20">
+        <span className="w-2 h-2 rounded-full bg-stone-400" />
+        <span>Select Dates</span>
+      </div>
+    );
+  };
+
   return (
     <Link
       href={`/property/${property.slug || property.id}`}
-      className="group flex flex-col bg-white rounded-3xl overflow-hidden border border-stone-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+      className={`group flex flex-col bg-white rounded-3xl overflow-hidden border border-stone-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ${
+        isSoldOut || isUnavailable ? "opacity-95" : ""
+      }`}
     >
       {/* Property Image Container */}
       <div className="relative aspect-[16/10] w-full overflow-hidden bg-stone-100">
@@ -82,7 +139,9 @@ export default function PropertyCard({ property, onWishlistChange }: PropertyPro
             e.currentTarget.onerror = null;
             e.currentTarget.src = "https://images.unsplash.com/photo-1587061949409-02df41d5e562?auto=format&fit=crop&w=1200&q=80";
           }}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out ${
+            isSoldOut ? "grayscale-[30%] brightness-90" : ""
+          }`}
         />
 
         {/* Gradient Overlay */}
@@ -90,9 +149,8 @@ export default function PropertyCard({ property, onWishlistChange }: PropertyPro
 
         {/* Top Badges */}
         <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md text-white text-xs font-semibold border border-white/20">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Verified Stay</span>
+          <div className="flex items-center space-x-2">
+            {renderAvailabilityBadge()}
           </div>
 
           <button
@@ -147,6 +205,14 @@ export default function PropertyCard({ property, onWishlistChange }: PropertyPro
               <Bed className="w-3.5 h-3.5" />
               <span>{property.bedrooms} Bed{property.bedrooms > 1 ? "s" : ""}</span>
             </span>
+            {property.total_units && property.total_units > 1 && (
+              <>
+                <span>•</span>
+                <span className="text-stone-600 font-medium">
+                  {property.total_units} units
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -162,8 +228,16 @@ export default function PropertyCard({ property, onWishlistChange }: PropertyPro
             <span className="text-[10px] text-stone-400 block">+ ₹{property.cleaning_fee} clean & taxes</span>
           </div>
 
-          <span className="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-800 text-xs font-bold group-hover:bg-brand-600 group-hover:text-white transition-colors">
-            Reserve
+          <span
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              isSoldOut
+                ? "bg-stone-100 text-rose-600 group-hover:bg-rose-50"
+                : isUnavailable
+                ? "bg-stone-100 text-stone-500"
+                : "bg-stone-100 text-stone-800 group-hover:bg-brand-600 group-hover:text-white"
+            }`}
+          >
+            {isSoldOut ? "Sold Out" : isUnavailable ? "Unavailable" : "Reserve"}
           </span>
         </div>
       </div>

@@ -1,12 +1,13 @@
 import random
 import string
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from typing import Tuple, Optional, List, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from fastapi import HTTPException, status
 
 from backend.app.models.user import User
-from backend.app.models.property import Property, Availability
+from backend.app.models.property import Property, Availability, ApprovalStatus
 from backend.app.models.activity import Activity, ActivitySlot, SlotStatus
 from backend.app.models.booking import (
     Booking, BookingItem, BookingStatus, PaymentStatus, BookingItemType
@@ -15,7 +16,7 @@ from backend.app.models.payment import Payment, PaymentGateway, PaymentRecordSta
 from backend.app.models.coupon import Coupon, DiscountType
 from backend.app.schemas.booking import BookingCreateRequest, ActivityItemBooking, PriceItemDetail
 from backend.app.services.availability_service import availability_service
-from backend.app.services.qr_service import generate_booking_qr_code
+from backend.app.services.qr_service import generate_booking_qr_code, generate_verification_token
 
 def generate_booking_code() -> str:
     chars = "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
@@ -29,6 +30,7 @@ class BookingService:
         check_in: Optional[date],
         check_out: Optional[date],
         guest_count: int,
+        quantity: int = 1,
         coupon_code: Optional[str] = None,
         activities: List[ActivityItemBooking] = []
     ) -> Dict[str, Any]:
@@ -36,6 +38,7 @@ class BookingService:
         cleaning_fee = 0.0
         nights = 0
         items_breakdown: List[PriceItemDetail] = []
+        qty = max(quantity, 1)
 
         # 1. Stay cost
         if property_id and check_in and check_out:
@@ -44,26 +47,27 @@ class BookingService:
                 raise HTTPException(status_code=404, detail="Property not found")
             
             sub, clean_fee, dates_detail = availability_service.calculate_stay_cost(
-                db, property_id, check_in, check_out
+                db, property_id, check_in, check_out, quantity=qty
             )
             stay_subtotal = sub
             cleaning_fee = clean_fee
             nights = len(dates_detail)
             
+            unit_title = f"{qty} Unit{'s' if qty > 1 else ''}"
             items_breakdown.append(PriceItemDetail(
-                title=f"{prop.name} ({nights} Night{'s' if nights > 1 else ''})",
+                title=f"{prop.name} - {unit_title} ({nights} Night{'s' if nights > 1 else ''})",
                 description=f"{check_in.strftime('%d %b %Y')} to {check_out.strftime('%d %b %Y')} for {guest_count} guest{'s' if guest_count > 1 else ''}",
-                quantity=nights,
-                unit_price=round(stay_subtotal / max(nights, 1), 2),
+                quantity=nights * qty,
+                unit_price=round(stay_subtotal / max(nights * qty, 1), 2),
                 total=stay_subtotal
             ))
             
             if cleaning_fee > 0:
                 items_breakdown.append(PriceItemDetail(
                     title="Cleaning & Sanitization Fee",
-                    description="Standard professional turnaround and hygiene service",
-                    quantity=1,
-                    unit_price=cleaning_fee,
+                    description=f"Standard professional turnaround and hygiene service ({qty} unit{'s' if qty > 1 else ''})",
+                    quantity=qty,
+                    unit_price=round(cleaning_fee / qty, 2),
                     total=cleaning_fee
                 ))
 
@@ -132,21 +136,55 @@ class BookingService:
     ) -> Booking:
         """
         Creates a pending booking with double booking protection inside an atomic transaction.
+        Enforces:
+        - Check-in not in past
+        - Check-out > Check-in
+        - Guests > 0 and <= capacity
+        - Quantity > 0 and <= available inventory
+        - Hold expires in 15 minutes
         """
-        # Re-check stay availability atomically
+        qty = getattr(booking_in, "quantity", 1) or 1
+        today = date.today()
+
         if booking_in.property_id:
             if not booking_in.check_in or not booking_in.check_out:
                 raise HTTPException(status_code=400, detail="Check-in and Check-out dates required for stay")
-            
-            is_avail, reason, nights = availability_service.check_property_availability(
+
+            if booking_in.check_in < today:
+                raise HTTPException(status_code=400, detail="Check-in date cannot be in the past")
+
+            if booking_in.check_out <= booking_in.check_in:
+                raise HTTPException(status_code=400, detail="Check-out date must be strictly after check-in date")
+
+            if booking_in.guest_count <= 0:
+                raise HTTPException(status_code=400, detail="Guest count must be positive")
+
+            if qty <= 0:
+                raise HTTPException(status_code=400, detail="Requested quantity must be positive")
+
+        # Acquire immediate transaction lock for serialized availability validation in SQLite
+        try:
+            db.connection().execute(text("BEGIN IMMEDIATE"))
+        except Exception:
+            pass
+
+        # Re-check stay availability atomically within transaction
+        if booking_in.property_id:
+            avail_res = availability_service.calculate_property_availability(
                 db=db,
                 property_id=booking_in.property_id,
                 check_in=booking_in.check_in,
                 check_out=booking_in.check_out,
-                guest_count=booking_in.guest_count
+                guest_count=booking_in.guest_count,
+                quantity=qty
             )
-            if not is_avail:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Booking Conflict: {reason}")
+            if not avail_res["is_available"]:
+                db.rollback()
+                conflict_msg = (
+                    "Sorry, this property is no longer available for your selected dates. "
+                    "Please choose another date or property."
+                )
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict_msg)
 
         # Check and lock activity slots
         for act_item in booking_in.activities:
@@ -156,6 +194,7 @@ class BookingService:
                 participants=act_item.participants
             )
             if not is_slot_avail:
+                db.rollback()
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Activity Slot Conflict: {reason}")
 
         # Calculate pricing server-side
@@ -165,14 +204,18 @@ class BookingService:
             check_in=booking_in.check_in,
             check_out=booking_in.check_out,
             guest_count=booking_in.guest_count,
+            quantity=qty,
             coupon_code=booking_in.coupon_code,
             activities=booking_in.activities
         )
 
         booking_code = generate_booking_code()
-        # Ensure booking code is unique
         while db.query(Booking).filter(Booking.booking_code == booking_code).first():
             booking_code = generate_booking_code()
+
+        # Set 15-minute hold expiration for payment pending
+        now_utc = datetime.now(timezone.utc)
+        hold_expiry = now_utc + timedelta(minutes=15)
 
         booking = Booking(
             booking_code=booking_code,
@@ -181,6 +224,8 @@ class BookingService:
             check_in=booking_in.check_in,
             check_out=booking_in.check_out,
             guest_count=booking_in.guest_count,
+            quantity=qty,
+            hold_expires_at=hold_expiry,
             subtotal=pricing["subtotal"],
             cleaning_fee=pricing["cleaning_fee"],
             tax=pricing["tax"],
@@ -202,10 +247,10 @@ class BookingService:
                 property_id=booking_in.property_id,
                 date_start=booking_in.check_in,
                 date_end=booking_in.check_out,
-                quantity=pricing["nights"],
-                unit_price=round(pricing["stay_subtotal"] / max(pricing["nights"], 1), 2),
+                quantity=pricing["nights"] * qty,
+                unit_price=round(pricing["stay_subtotal"] / max(pricing["nights"] * qty, 1), 2),
                 total_price=pricing["stay_subtotal"],
-                notes=f"Stay for {booking_in.guest_count} guests"
+                notes=f"Stay for {booking_in.guest_count} guests ({qty} unit{'s' if qty > 1 else ''})"
             )
             db.add(stay_item)
 
@@ -231,18 +276,10 @@ class BookingService:
                 )
                 db.add(act_booking_item)
 
-        # Generate QR code pass
-        prop_name = booking.property.name if booking.property else "Gujarat Weekend Experience"
-        qr_code_str = generate_booking_qr_code({
-            "booking_code": booking.booking_code,
-            "property_id": booking.property_id,
-            "customer_name": customer.full_name,
-            "check_in": booking.check_in,
-            "check_out": booking.check_out,
-            "guest_count": booking.guest_count,
-            "status": booking.status.value
-        })
-        booking.qr_code_data = qr_code_str
+        # Generate unique verification token & secure scannable QR code pass
+        if not booking.verification_token:
+            booking.verification_token = generate_verification_token()
+        booking.qr_code_data = generate_booking_qr_code(booking.verification_token)
 
         # If coupon used, increment count
         if booking_in.coupon_code:
@@ -266,21 +303,40 @@ class BookingService:
     ) -> Booking:
         """
         Transition booking to CONFIRMED and record Payment in SQLite.
+        Re-validates availability before confirming to guarantee no double bookings.
         """
+        try:
+            db.connection().execute(text("BEGIN IMMEDIATE"))
+        except Exception:
+            pass
+
+        # Re-validate stay availability right before confirming
+        if booking.property_id and booking.check_in and booking.check_out:
+            avail_res = availability_service.calculate_property_availability(
+                db=db,
+                property_id=booking.property_id,
+                check_in=booking.check_in,
+                check_out=booking.check_out,
+                guest_count=booking.guest_count,
+                quantity=getattr(booking, "quantity", 1) or 1,
+                exclude_booking_id=booking.id
+            )
+            if not avail_res["is_available"]:
+                db.rollback()
+                conflict_msg = (
+                    "Sorry, this property is no longer available for your selected dates. "
+                    "Please choose another date or property."
+                )
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict_msg)
+
         booking.status = BookingStatus.CONFIRMED
         booking.payment_status = PaymentStatus.PAID
+        booking.hold_expires_at = None
 
-        # Refresh QR code with confirmed status
-        customer_name = booking.customer.full_name if booking.customer else "Valued Guest"
-        booking.qr_code_data = generate_booking_qr_code({
-            "booking_code": booking.booking_code,
-            "property_id": booking.property_id,
-            "customer_name": customer_name,
-            "check_in": booking.check_in,
-            "check_out": booking.check_out,
-            "guest_count": booking.guest_count,
-            "status": BookingStatus.CONFIRMED.value
-        })
+        # Refresh QR code with secure verification URL
+        if not booking.verification_token:
+            booking.verification_token = generate_verification_token()
+        booking.qr_code_data = generate_booking_qr_code(booking.verification_token)
 
         payment = Payment(
             booking_id=booking.id,
@@ -305,10 +361,11 @@ class BookingService:
         reason: str
     ) -> Booking:
         """
-        Cancels booking, releases activity slots.
+        Cancels booking, releases activity slots and inventory.
         """
         booking.status = BookingStatus.CANCELLED
         booking.cancellation_reason = reason
+        booking.hold_expires_at = None
 
         # Release activity slot capacity
         for item in booking.items:

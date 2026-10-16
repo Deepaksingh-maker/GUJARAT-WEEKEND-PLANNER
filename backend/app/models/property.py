@@ -79,6 +79,20 @@ class Availability(Base):
 
     property = relationship("Property", back_populates="availabilities")
 
+class InventoryBlock(Base):
+    __tablename__ = "inventory_blocks"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    property_id = Column(Integer, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    unit_id = Column(Integer, nullable=True)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+    blocked_units = Column(Integer, default=1, nullable=False)
+    reason = Column(Text, nullable=False, default="maintenance")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    property = relationship("Property", back_populates="inventory_blocks")
+
 class Property(Base):
     __tablename__ = "properties"
 
@@ -94,6 +108,7 @@ class Property(Base):
     max_guests = Column(Integer, default=4, nullable=False)
     bedrooms = Column(Integer, default=2, nullable=False)
     bathrooms = Column(Integer, default=2, nullable=False)
+    total_units = Column(Integer, default=1, nullable=False)
     address = Column(String(255), nullable=False)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
@@ -117,6 +132,7 @@ class Property(Base):
     images = relationship("PropertyImage", back_populates="property", cascade="all, delete-orphan", order_by="PropertyImage.sort_order")
     amenities = relationship("PropertyAmenity", back_populates="property", cascade="all, delete-orphan")
     availabilities = relationship("Availability", back_populates="property", cascade="all, delete-orphan")
+    inventory_blocks = relationship("InventoryBlock", back_populates="property", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="property")
     bookings = relationship("Booking", back_populates="property")
     reviews = relationship("Review", back_populates="property", cascade="all, delete-orphan")

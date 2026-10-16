@@ -68,6 +68,7 @@ class PropertyBase(BaseModel):
     max_guests: int = Field(default=4, gt=0)
     bedrooms: int = Field(default=2, ge=0)
     bathrooms: int = Field(default=2, ge=0)
+    total_units: int = Field(default=1, gt=0)
     address: str
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -119,6 +120,7 @@ class PropertyUpdate(BaseModel):
     max_guests: Optional[int] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[int] = None
+    total_units: Optional[int] = None
     address: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -177,6 +179,14 @@ class PropertyResponse(PropertyBase):
     created_at: datetime
     updated_at: datetime
     
+    # Live availability calculation fields
+    availability_status: str = "select_dates"
+    available_units: Optional[int] = None
+    booked_units: Optional[int] = None
+    blocked_units: Optional[int] = None
+    is_available: Optional[bool] = None
+    availability_message: Optional[str] = None
+
     # Associated summaries
     location: Optional[PropertyLocationSummary] = None
     host: Optional[PropertyHostSummary] = None
@@ -198,6 +208,7 @@ class AvailabilityCheckRequest(BaseModel):
     check_in: date
     check_out: date
     guests: int = 1
+    quantity: int = 1
 
 class AvailabilityCheckResponse(BaseModel):
     available: bool
@@ -211,3 +222,73 @@ class AvailabilityCheckResponse(BaseModel):
     tax: float
     total_price: float
     message: Optional[str] = None
+    availability_status: Optional[str] = None
+    available_units: Optional[int] = None
+    total_units: Optional[int] = None
+
+class AvailabilityDetailResponse(BaseModel):
+    is_available: bool
+    property_id: int
+    property_name: str
+    check_in: Optional[date] = None
+    check_out: Optional[date] = None
+    guests: int = 1
+    quantity: int = 1
+    total_units: int
+    available_units: int
+    booked_units: int
+    blocked_units: int
+    availability_status: str  # available, sold_out, limited_availability, select_dates, unavailable
+    requested_dates: List[str] = []
+    night_breakdown: List[dict] = []
+    stay_price: float = 0.0
+    cleaning_fee: float = 0.0
+    tax: float = 0.0
+    total_price: float = 0.0
+    message: Optional[str] = None
+    alternative_dates: List[dict] = []
+    alternative_properties: List[dict] = []
+
+class InventoryBlockCreate(BaseModel):
+    property_id: int
+    start_date: date
+    end_date: date
+    blocked_units: int = Field(default=1, gt=0)
+    reason: str = Field(default="maintenance", min_length=2)
+
+class InventoryBlockResponse(BaseModel):
+    id: int
+    property_id: int
+    unit_id: Optional[int] = None
+    start_date: date
+    end_date: date
+    blocked_units: int
+    reason: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class HostCalendarDayStatus(BaseModel):
+    date: str
+    status: str  # available (green), booked (red), held (yellow), blocked (gray)
+    total_units: int
+    available_units: int
+    booked_units: int
+    held_units: int
+    blocked_units: int
+    price: float
+    bookings: List[dict] = []
+    blocks: List[dict] = []
+
+class HostCalendarProperty(BaseModel):
+    property_id: int
+    property_name: str
+    property_type: str
+    total_units: int
+    days: List[HostCalendarDayStatus]
+
+class HostCalendarResponse(BaseModel):
+    start_date: str
+    end_date: str
+    properties: List[HostCalendarProperty]

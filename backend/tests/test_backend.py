@@ -74,10 +74,10 @@ def test_end_to_end_booking_flow_and_double_booking_prevention():
     token = login_res.json()["data"]["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 2. Get a verified property
+    # 2. Get a verified property with 1 unit (e.g. villa)
     props_res = client.get("/api/properties")
     props = props_res.json()["data"]
-    prop = props[0]
+    prop = next((p for p in props if p.get("total_units", 1) == 1), props[0])
     prop_id = prop["id"]
 
     # Pick future dates with dynamic offset to avoid collision with previous runs
@@ -138,7 +138,7 @@ def test_end_to_end_booking_flow_and_double_booking_prevention():
         "activities": []
     }, headers=headers)
     assert second_booking_res.status_code == 409
-    assert "Conflict" in second_booking_res.json()["detail"]
+    assert "Conflict" in second_booking_res.json()["detail"] or "no longer available" in second_booking_res.json()["detail"]
 
     # 7. Payment Initiation
     init_res = client.post("/api/payments/initiate", json={

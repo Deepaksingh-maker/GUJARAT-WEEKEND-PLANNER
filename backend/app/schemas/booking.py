@@ -13,6 +13,7 @@ class BookingCreateRequest(BaseModel):
     check_in: Optional[date] = None
     check_out: Optional[date] = None
     guest_count: int = Field(default=1, gt=0)
+    quantity: int = Field(default=1, gt=0)
     special_requests: Optional[str] = None
     coupon_code: Optional[str] = None
     activities: List[ActivityItemBooking] = []
@@ -22,6 +23,7 @@ class PriceBreakdownRequest(BaseModel):
     check_in: Optional[date] = None
     check_out: Optional[date] = None
     guest_count: int = 1
+    quantity: int = Field(default=1, gt=0)
     coupon_code: Optional[str] = None
     activities: List[ActivityItemBooking] = []
 
@@ -85,6 +87,8 @@ class BookingResponse(BaseModel):
     check_in: Optional[date]
     check_out: Optional[date]
     guest_count: int
+    quantity: int = 1
+    hold_expires_at: Optional[datetime] = None
     subtotal: float
     cleaning_fee: float
     tax: float
@@ -96,6 +100,9 @@ class BookingResponse(BaseModel):
     qr_code_data: Optional[str]
     special_requests: Optional[str]
     coupon_code: Optional[str]
+    verification_token: Optional[str] = None
+    is_checked_in: bool = False
+    checked_in_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     property: Optional[BookingPropertySummary] = None
@@ -114,3 +121,47 @@ class BookingCancelRequest(BaseModel):
 
 class BookingStatusUpdateRequest(BaseModel):
     status: BookingStatus
+
+class DigitalPassResponse(BaseModel):
+    is_valid: bool
+    status: str
+    booking_code: str
+    booking_id: int
+    verification_token: Optional[str] = None
+    verification_url: str
+    property_name: str
+    property_slug: Optional[str] = None
+    property_type: Optional[str] = None
+    property_image: Optional[str] = None
+    property_location: Optional[str] = None
+    property_address: Optional[str] = None
+    guest_name: str
+    guest_count: int
+    check_in: Optional[date] = None
+    check_out: Optional[date] = None
+    nights: int
+    total_amount: float
+    confirmed_at: Optional[datetime] = None
+    created_at: datetime
+    qr_code_data: Optional[str] = None
+    
+    # Check-in tracking
+    is_checked_in: bool = False
+    checked_in_at: Optional[datetime] = None
+    checked_in_by_name: Optional[str] = None
+    
+    # Host / Admin authorized check-in capabilities
+    can_check_in: bool = False
+    is_host_or_admin: bool = False
+    verification_message: str = ""
+
+    class Config:
+        from_attributes = True
+
+class CheckInResponse(BaseModel):
+    success: bool
+    message: str
+    booking_code: str
+    is_checked_in: bool
+    checked_in_at: datetime
+    checked_in_by: str
