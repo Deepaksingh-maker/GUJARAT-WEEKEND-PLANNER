@@ -2,12 +2,14 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { 
   Bot, Sparkles, X, Send, Compass, MapPin, 
   ChevronRight, RefreshCw, MessageSquare 
 } from "lucide-react";
 
 interface Message {
+
   id: string;
   sender: "user" | "ai";
   text: string;
@@ -78,7 +80,9 @@ const AI_KNOWLEDGE: { keywords: string[]; response: string; links?: { title: str
 ];
 
 export default function AIAssistantWidget() {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "initial-welcome",
@@ -141,8 +145,14 @@ export default function AIAssistantWidget() {
     }, 700);
   };
 
+  // Do not render floating AI assistant on the messages/chat screen
+  if (pathname?.startsWith("/messages")) {
+    return null;
+  }
+
   return (
     <>
+
       {/* Floating Toggle Button */}
       <div className="fixed bottom-16 md:bottom-6 right-3 sm:right-5 z-30">
         <button

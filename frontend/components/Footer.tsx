@@ -1,8 +1,18 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Compass, ShieldCheck, MapPin, Heart, Sparkles, PhoneCall } from "lucide-react";
 
 export default function Footer() {
+  const pathname = usePathname();
+
+  // Hide large marketing footer on messages/chat interface to keep mobile & desktop chat clean
+  if (pathname?.startsWith("/messages")) {
+    return null;
+  }
+
   return (
     <footer className="bg-stone-900 text-stone-300 pt-16 pb-12 border-t border-stone-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

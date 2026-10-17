@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useRef, useMemo } from "react";
+import React, { Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { 
@@ -98,6 +98,7 @@ function MessagesPageContent() {
   const [shieldWarning, setShieldWarning] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
+  const initialSelectionDoneRef = useRef(false);
 
   // Auto-scroll ONLY inside the chat container (never scrolls the window or page)
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
@@ -107,7 +108,6 @@ function MessagesPageContent() {
         behavior,
       });
     }
-
   };
 
   // Redirect if not authenticated
@@ -115,11 +115,10 @@ function MessagesPageContent() {
     if (!authLoading && !isAuthenticated) {
       router.push("/auth/login?redirect=/messages");
     }
-
   }, [authLoading, isAuthenticated, router]);
 
   // Load all user conversations
-  const loadConversations = async (silent = false) => {
+  const loadConversations = useCallback(async (silent = false) => {
     if (!isAuthenticated) return;
     try {
       if (!silent) setLoadingConversations(true);
@@ -127,21 +126,40 @@ function MessagesPageContent() {
       if (res.success && res.data) {
         setConversations(res.data);
 
-        // If no active conversation is picked yet, pick the first one or the queryHostId
-        if (!activeOtherUserId && res.data.length > 0) {
-          const first = res.data[0];
-          setActiveOtherUserId(first.other_user.id);
-          setActivePropertyId(first.property_id || null);
-          setActivePropertyName(first.property_name || null);
-        }
+        // ONLY perform initial auto-selection ONCE, and NEVER on background poll
+        if (!initialSelectionDoneRef.current) {
+          initialSelectionDoneRef.current = true;
 
+          if (queryHostId) {
+            const match = res.data.find((c: ConversationItem) => c.other_user.id === queryHostId);
+            if (match) {
+              setActiveOtherUserId(match.other_user.id);
+              setActivePropertyId(match.property_id || queryPropertyId || null);
+              setActivePropertyName(match.property_name || queryPropertyName || null);
+            } else {
+              setActiveOtherUserId(queryHostId);
+              setActivePropertyId(queryPropertyId || null);
+              setActivePropertyName(queryPropertyName || null);
+            }
+          } else {
+            // Only auto-open first chat on DESKTOP screens (width >= 768px),
+            // NEVER on mobile screens so mobile users can view their Inbox list first!
+            const isDesktop = typeof window !== "undefined" && window.innerWidth >= 768;
+            if (isDesktop && res.data.length > 0) {
+              const first = res.data[0];
+              setActiveOtherUserId(first.other_user.id);
+              setActivePropertyId(first.property_id || null);
+              setActivePropertyName(first.property_name || null);
+            }
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to load conversations:", err);
     } finally {
       if (!silent) setLoadingConversations(false);
     }
-  };
+  }, [isAuthenticated, queryHostId, queryPropertyId, queryPropertyName]);
 
   // Initial load and periodic poll for conversations
   useEffect(() => {
@@ -150,7 +168,33 @@ function MessagesPageContent() {
       const interval = setInterval(() => loadConversations(true), 8000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadConversations]);
+
+  // Handle mobile back gesture/button via popstate
+  useEffect(() => {
+    const handlePopState = () => {
+      if (activeOtherUserId && typeof window !== "undefined" && window.innerWidth < 768) {
+        setActiveOtherUserId(null);
+        setActivePropertyId(null);
+        setActivePropertyName(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [activeOtherUserId]);
+
+  const handleBackToInbox = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 768 && window.history.state?.inChat) {
+      window.history.back();
+    } else {
+      setActiveOtherUserId(null);
+      setActivePropertyId(null);
+      setActivePropertyName(null);
+      if (queryHostId) {
+        router.replace("/messages");
+      }
+    }
+  };
 
   // Load message thread for active conversation
   const loadThread = async (silent = false) => {
@@ -206,6 +250,9 @@ function MessagesPageContent() {
 
   // Handle selecting a conversation from the sidebar
   const handleSelectConversation = (conv: ConversationItem) => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      window.history.pushState({ inChat: true }, "");
+    }
     setActiveOtherUserId(conv.other_user.id);
     setActivePropertyId(conv.property_id || null);
     setActivePropertyName(conv.property_name || null);
@@ -220,6 +267,7 @@ function MessagesPageContent() {
       )
     );
   };
+
 
   // Send message handler
   const handleSendMessage = async (e?: React.FormEvent, customText?: string) => {
@@ -319,10 +367,10 @@ function MessagesPageContent() {
   }
 
   return (
-    <div className="bg-stone-50/60 min-h-[calc(100vh-80px)] py-4 sm:py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Page Top Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+    <div className="bg-stone-50/60 min-h-[calc(100vh-80px)] py-2 sm:py-6">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+        {/* Page Top Header - only show on desktop OR when inbox is showing on mobile */}
+        <div className={`flex flex-wrap items-center justify-between gap-4 mb-3 sm:mb-5 ${activeOtherUserId ? "hidden md:flex" : "flex"}`}>
           <div>
             <div className="flex items-center space-x-2 text-xs font-bold text-brand-600 uppercase tracking-wider mb-1">
               <Compass className="w-3.5 h-3.5" />
@@ -355,15 +403,15 @@ function MessagesPageContent() {
         </div>
 
         {/* Main Messenger Container */}
-        <div className="bg-white rounded-3xl border border-stone-200 shadow-xl overflow-hidden flex flex-col md:flex-row h-[720px] max-h-[82vh]">
+        <div className="bg-white rounded-2xl md:rounded-3xl border border-stone-200 shadow-xl overflow-hidden flex flex-col md:flex-row h-[calc(100vh-190px)] min-h-[500px] md:h-[720px] md:max-h-[82vh]">
           {/* ================= LEFT SIDEBAR (CONVERSATIONS LIST) ================= */}
           <div
-            className={`w-full md:w-80 lg:w-96 flex flex-col border-r border-stone-200 bg-white transition-all ${
+            className={`w-full md:w-80 lg:w-96 flex flex-col border-r border-stone-200 bg-white min-h-0 h-full transition-all ${
               activeOtherUserId ? "hidden md:flex" : "flex"
             }`}
           >
             {/* Sidebar Header & Search */}
-            <div className="p-4 border-b border-stone-100 space-y-3 bg-stone-50/50">
+            <div className="p-3.5 sm:p-4 border-b border-stone-100 space-y-3 bg-stone-50/50 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-stone-500">
                   Inbox ({conversations.length})
@@ -420,7 +468,10 @@ function MessagesPageContent() {
             </div>
 
             {/* Conversation List / Empty State */}
-            <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+            <div
+              className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 overscroll-contain"
+              style={{ WebkitOverflowScrolling: "touch" }}
+            >
               {loadingConversations && conversations.length === 0 ? (
                 <div className="p-8 text-center space-y-3">
                   <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -536,43 +587,45 @@ function MessagesPageContent() {
 
           {/* ================= RIGHT MAIN PANEL (ACTIVE THREAD) ================= */}
           <div
-            className={`flex-1 flex flex-col bg-white ${
+            className={`fixed inset-0 z-[60] flex flex-col bg-stone-50 h-[100dvh] w-full md:static md:z-auto md:flex-1 md:h-full md:min-h-0 md:bg-white ${
               !activeOtherUserId ? "hidden md:flex" : "flex"
             }`}
           >
             {activeOtherUserId ? (
               <>
                 {/* Active Chat Header */}
-                <div className="p-4 border-b border-stone-200 bg-white flex items-center justify-between shadow-sm z-10">
-                  <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0 p-3 sm:p-4 border-b border-stone-200 bg-white flex items-center justify-between shadow-sm z-10">
+                  <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
                     {/* Mobile Back Button */}
                     <button
-                      onClick={() => setActiveOtherUserId(null)}
-                      className="md:hidden p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors"
+                      type="button"
+                      onClick={handleBackToInbox}
+                      className="md:hidden -ml-1 p-2 text-stone-700 hover:text-stone-900 active:bg-stone-100 rounded-xl transition-colors flex items-center justify-center flex-shrink-0"
                       title="Back to conversations list"
+                      aria-label="Back to conversations list"
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </button>
 
-                    <div className="w-10 h-10 rounded-2xl bg-brand-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-brand-600 text-white font-bold flex items-center justify-center text-sm shadow-md flex-shrink-0">
                       {activeHostName[0]?.toUpperCase() || "H"}
                     </div>
 
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center space-x-1.5">
-                        <h3 className="font-extrabold text-sm text-stone-900">
+                        <h3 className="font-extrabold text-xs sm:text-sm text-stone-900 truncate">
                           {activeHostName}
                         </h3>
-                        <span title="Verified Gujarat Host">
-                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span title="Verified Gujarat Host" className="flex-shrink-0">
+                          <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2 text-[11px] text-stone-500">
-                        <span>Gujarat Host Partner</span>
+                      <div className="flex items-center space-x-1.5 text-[10px] sm:text-[11px] text-stone-500 truncate">
+                        <span className="flex-shrink-0">Gujarat Host Partner</span>
                         {activePropertyName && (
                           <>
                             <span>•</span>
-                            <span className="font-bold text-brand-600 truncate max-w-[180px]">
+                            <span className="font-bold text-brand-600 truncate">
                               {activePropertyName}
                             </span>
                           </>
@@ -582,36 +635,43 @@ function MessagesPageContent() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
                     {activePropertyId && (
                       <Link
                         href={`/property/${activePropertyId}`}
                         target="_blank"
-                        className="hidden sm:flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-bold text-stone-700 bg-stone-100 hover:bg-stone-200/80 transition-colors"
+                        className="flex items-center space-x-1 px-2.5 py-1.5 sm:px-3 rounded-xl text-[11px] sm:text-xs font-bold text-stone-700 bg-stone-100 hover:bg-stone-200/80 transition-colors"
                         title="View Property Page"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
-                        <span>View Stay</span>
+                        <span className="hidden sm:inline">View Stay</span>
                       </Link>
                     )}
                   </div>
                 </div>
 
                 {/* Safe Anti-Bypass Banner */}
-                <div className="px-4 py-2 bg-amber-50/70 border-b border-amber-200/60 text-[11px] text-amber-900 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
+                <div className="flex-shrink-0 px-3 py-2 bg-amber-50/80 border-b border-amber-200/60 text-[11px] text-amber-900 flex items-center justify-between">
+                  <div className="flex items-center space-x-2 min-w-0">
                     <Lock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                    <p>
+                    <p className="truncate sm:whitespace-normal">
                       <strong>Double-booking protected:</strong> Direct WhatsApp & phone contacts unlock upon confirmed booking payment.
                     </p>
                   </div>
-                  <span className="hidden sm:inline-block text-[10px] font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md">
+                  <span className="hidden sm:inline-block text-[10px] font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md flex-shrink-0 ml-2">
                     Secure Chat
                   </span>
                 </div>
 
                 {/* Messages Body */}
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-stone-50/40">
+                <div
+                  ref={chatContainerRef}
+                  className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6 space-y-3.5 bg-stone-50/50 overscroll-contain"
+                  style={{
+                    WebkitOverflowScrolling: "touch",
+                    touchAction: "pan-y",
+                  }}
+                >
                   {loadingThread && messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center space-y-3">
                       <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin" />
@@ -672,7 +732,7 @@ function MessagesPageContent() {
                                   {m.sender_name || activeHostName}
                                 </p>
                               )}
-                              <p className="whitespace-pre-line font-medium">{m.message}</p>
+                              <p className="whitespace-pre-line font-medium break-words">{m.message}</p>
                             </div>
                           </div>
 
@@ -706,15 +766,15 @@ function MessagesPageContent() {
 
                 {/* Shield / Flag Warning Alert */}
                 {shieldWarning && (
-                  <div className="px-4 py-2.5 bg-rose-50 border-t border-rose-200 text-rose-900 text-xs font-semibold flex items-start gap-2 animate-in fade-in">
+                  <div className="flex-shrink-0 px-4 py-2.5 bg-rose-50 border-t border-rose-200 text-rose-900 text-xs font-semibold flex items-start gap-2 animate-in fade-in">
                     <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p>{shieldWarning}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShieldWarning(null)}
-                      className="text-rose-500 hover:text-rose-800 font-bold ml-1"
+                      className="text-rose-500 hover:text-rose-800 font-bold ml-1 flex-shrink-0"
                     >
                       ✕
                     </button>
@@ -724,23 +784,28 @@ function MessagesPageContent() {
                 {/* Chat Input Bar */}
                 <form
                   onSubmit={handleSendMessage}
-                  className="p-3 sm:p-4 bg-white border-t border-stone-200 flex items-center space-x-2.5"
+                  className="flex-shrink-0 p-2.5 sm:p-4 bg-white border-t border-stone-200 flex items-center space-x-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
                 >
                   <input
                     type="text"
                     required
                     placeholder={`Reply to ${activeHostName}...`}
                     value={inputMessage}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        scrollToBottom("smooth");
+                      }, 300);
+                    }}
                     onChange={(e) => {
                       setInputMessage(e.target.value);
                       if (shieldWarning) setShieldWarning(null);
                     }}
-                    className="flex-1 bg-stone-100 hover:bg-stone-100/80 focus:bg-white border border-stone-200 rounded-2xl px-4 py-3 text-xs font-semibold text-stone-900 focus:outline-none focus:border-brand-500 transition-all placeholder:text-stone-400 shadow-inner"
+                    className="flex-1 bg-stone-100 hover:bg-stone-100/80 focus:bg-white border border-stone-200 rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs font-semibold text-stone-900 focus:outline-none focus:border-brand-500 transition-all placeholder:text-stone-400 shadow-inner"
                   />
                   <button
                     type="submit"
                     disabled={sending || !inputMessage.trim()}
-                    className="p-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold shadow-md shadow-brand-500/25 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center"
+                    className="p-2.5 sm:p-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold shadow-md shadow-brand-500/25 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center flex-shrink-0"
                     title="Send Message"
                   >
                     <Send className="w-4 h-4" />
@@ -775,6 +840,7 @@ function MessagesPageContent() {
     </div>
   );
 }
+
 
 export default function MessagesPage() {
   return (
