@@ -32,23 +32,25 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200 transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Brand Logo */}
-          <Link href="/" className="flex items-center space-x-3 group">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 to-amber-500 flex items-center justify-center shadow-lg shadow-brand-500/25 group-hover:scale-105 transition-transform">
-              <Compass className="w-6 h-6 text-white animate-spin-slow" />
+          <Link href="/" className="flex items-center space-x-2.5 sm:space-x-3 group">
+            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-brand-600 to-amber-500 flex items-center justify-center shadow-md sm:shadow-lg shadow-brand-500/25 group-hover:scale-105 transition-transform flex-shrink-0">
+              <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-white animate-spin-slow" />
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="font-extrabold text-xl tracking-tight text-stone-900">
+                <span className="font-extrabold text-lg sm:text-xl tracking-tight text-stone-900">
                   Gujarat<span className="text-brand-600">Weekend</span>
                 </span>
-                <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-brand-100 text-brand-700 rounded-md">
+                <span className="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-brand-100 text-brand-700 rounded-md">
                   GJ Only
                 </span>
               </div>
-              <p className="text-xs text-stone-500 font-medium">Stays & Experiential Escapes</p>
+              <p className="text-[10px] sm:text-xs text-stone-500 font-medium truncate max-w-[170px] sm:max-w-none">
+                Stays & Experiential Escapes
+              </p>
             </div>
           </Link>
 

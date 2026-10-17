@@ -359,7 +359,7 @@ export default function HomePage() {
               <span>Gujarat-Only Verified Weekend Escapes</span>
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.08]">
+            <h1 className="text-3xl sm:text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] sm:leading-[1.08]">
               YOUR NEXT WEEKEND <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-brand-400 to-orange-400">
                 STARTS IN GUJARAT.
@@ -779,17 +779,17 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2.5 sm:gap-3">
                       <Link
                         href={`/explore?location=${activePlan.destinationSlug}`}
-                        className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs tracking-wide backdrop-blur-md transition-all active:scale-95"
+                        className="w-full sm:w-auto text-center px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs tracking-wide backdrop-blur-md transition-all active:scale-95"
                       >
                         View Stays
                       </Link>
 
                       <Link
                         href={`/weekend-planner?destination=${encodeURIComponent(activePlan.destination)}&interest=${encodeURIComponent(activePlan.interest)}&budget=${activePlan.budget}`}
-                        className={`px-6 py-3.5 rounded-2xl font-black text-sm tracking-wide shadow-xl active:scale-95 transition-all flex items-center space-x-2 ${activePlan.buttonColor}`}
+                        className={`w-full sm:w-auto justify-center px-6 py-3.5 rounded-2xl font-black text-sm tracking-wide shadow-xl active:scale-95 transition-all flex items-center space-x-2 ${activePlan.buttonColor}`}
                       >
                         <span>Launch This Plan</span>
                         <ArrowRight className="w-4 h-4" />

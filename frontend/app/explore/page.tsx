@@ -495,12 +495,22 @@ function ExploreContent() {
           </div>
 
           {filterDrawerOpen && (
-            <button
-              onClick={() => setFilterDrawerOpen(false)}
-              className="w-full py-3 bg-brand-600 text-white font-bold rounded-xl"
-            >
-              Apply Filters ({properties.length} stays)
-            </button>
+            <div className="lg:hidden sticky bottom-0 -mx-6 -mb-6 p-4 bg-white/95 backdrop-blur-md border-t border-stone-200 shadow-xl flex items-center space-x-3 z-50">
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-colors"
+              >
+                Reset All
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterDrawerOpen(false)}
+                className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors"
+              >
+                Show {properties.length} Stays
+              </button>
+            </div>
           )}
         </div>
 

@@ -35,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen flex flex-col bg-stone-50 text-stone-900 pb-16 md:pb-0">
+      <body className="min-h-screen flex flex-col bg-stone-50 text-stone-900 pb-20 md:pb-0 overflow-x-hidden w-full">
         <AuthProvider>
           <Navbar />
           <main className="flex-1">{children}</main>

@@ -665,7 +665,7 @@ export default function PropertyDetailPage() {
         </div>
 
         {/* Right Column: Interactive Booking Widget */}
-        <div className="sticky top-28 bg-white rounded-3xl p-6 sm:p-7 border border-stone-200/80 shadow-xl space-y-6">
+        <div id="booking-widget" className="scroll-mt-24 sticky top-28 bg-white rounded-3xl p-5 sm:p-7 border border-stone-200/80 shadow-xl space-y-6">
           <div className="flex items-baseline justify-between pb-4 border-b border-stone-100">
             <div>
               <span className="text-2xl font-black text-stone-900">
@@ -1001,6 +1001,37 @@ export default function PropertyDetailPage() {
             Double-booking protected on server. Instant QR pass issued upon payment.
           </p>
         </div>
+      </div>
+
+      {/* Mobile Sticky Booking Footer Bar (Airbnb Style) */}
+      <div className="lg:hidden fixed bottom-14 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-stone-200/90 px-4 py-3 shadow-[0_-4px_25px_rgba(0,0,0,0.1)] flex items-center justify-between transition-all">
+        <div>
+          <div className="flex items-baseline space-x-1">
+            <span className="text-xl font-black text-stone-900">
+              ₹{property.price_per_night.toLocaleString("en-IN")}
+            </span>
+            <span className="text-xs text-stone-500 font-medium">/ night</span>
+          </div>
+          <div className="flex items-center space-x-1 text-xs text-stone-600">
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            <span className="font-bold">{property.average_rating || 4.9}</span>
+            <span className="text-stone-400 font-normal">({property.reviews_count || 12})</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById("booking-widget");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          }}
+          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-amber-500 hover:from-brand-700 hover:to-amber-600 text-white font-extrabold text-sm shadow-md shadow-brand-500/25 active:scale-95 transition-all flex items-center space-x-1.5"
+        >
+          <span>Reserve</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </div>
 
       {/* In-App Host Chat Modal with Anti-Bypass Protection */}

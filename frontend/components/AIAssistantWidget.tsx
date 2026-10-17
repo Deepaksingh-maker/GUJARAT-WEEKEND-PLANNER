@@ -144,18 +144,18 @@ export default function AIAssistantWidget() {
   return (
     <>
       {/* Floating Toggle Button */}
-      <div className="fixed bottom-20 md:bottom-6 right-5 z-40">
+      <div className="fixed bottom-16 md:bottom-6 right-3 sm:right-5 z-30">
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="group relative flex items-center space-x-2.5 px-4 py-3 bg-gradient-to-r from-brand-600 via-amber-500 to-brand-500 text-white rounded-full shadow-2xl shadow-brand-500/40 hover:scale-105 active:scale-95 transition-all border border-white/20"
+          className="group relative flex items-center space-x-2 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-r from-brand-600 via-amber-500 to-brand-500 text-white rounded-full shadow-xl shadow-brand-500/30 hover:scale-105 active:scale-95 transition-all border border-white/20"
           aria-label="Open AI Weekend Assistant"
         >
           <div className="relative">
-            <Sparkles className="w-5 h-5 text-amber-200 animate-spin-slow" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white animate-pulse" />
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-amber-200 animate-spin-slow" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-emerald-400 rounded-full border-2 border-white animate-pulse" />
           </div>
-          <span className="font-extrabold text-xs tracking-wide">
+          <span className="font-extrabold text-[11px] sm:text-xs tracking-wide">
             {isOpen ? "Close Guide" : "AI Travel Guide"}
           </span>
         </button>
@@ -163,7 +163,7 @@ export default function AIAssistantWidget() {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-36 md:bottom-20 right-4 sm:right-6 z-50 w-[92vw] sm:w-[410px] h-[540px] bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-stone-200/90 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5">
+        <div className="fixed bottom-16 md:bottom-20 right-2 sm:right-6 z-50 w-[calc(100vw-1rem)] sm:w-[410px] h-[75vh] max-h-[520px] bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-stone-200/90 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5">
           {/* Header */}
           <div className="p-4 bg-gradient-to-r from-stone-900 via-stone-850 to-stone-900 text-white flex items-center justify-between border-b border-stone-800">
             <div className="flex items-center space-x-3">
