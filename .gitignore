@@ -1,8 +1,11 @@
 .venv/
 venv/
+pyvenv.cfg
 __pycache__/
 .pytest_cache/
 .env
+.env.example
+login.txt
 *.pyc
 node_modules/
 frontend/node_modules/
