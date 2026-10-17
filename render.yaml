@@ -1,26 +1,29 @@
 services:
   - type: web
     name: gujarat-weekend-backend
+    plan: free
     runtime: docker
     dockerfilePath: ./Dockerfile.backend
     healthCheckPath: /api/health
     envVars:
       - key: SECRET_KEY
-        sync: false
+        generateValue: true
       - key: DATABASE_URL
         value: sqlite:////app/database/app.db
       - key: RAZORPAY_KEY_ID
-        sync: false
+        value: rzp_test_gujarat_weekend
       - key: RAZORPAY_KEY_SECRET
-        sync: false
+        value: secret_gujarat_key_simulation
       - key: RAZORPAY_SIMULATION_MODE
         value: "true"
 
   - type: web
     name: gujarat-weekend-frontend
+    plan: free
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     envVars:
       - key: NEXT_PUBLIC_API_URL
         sync: false
+
