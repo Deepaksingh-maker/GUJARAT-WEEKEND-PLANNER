@@ -25,5 +25,5 @@ services:
     dockerContext: ./frontend
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        sync: false
+        value: "https://gujarat-weekend-backend.onrender.com/api"
 
