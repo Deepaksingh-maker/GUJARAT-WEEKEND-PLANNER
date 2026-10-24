@@ -129,6 +129,7 @@ class PropertyUpdate(BaseModel):
     house_rules: Optional[str] = None
     cancellation_policy: Optional[CancellationPolicyType] = None
     booking_enabled: Optional[bool] = None
+    verification_status: Optional[ApprovalStatus] = None
     is_featured: Optional[bool] = None
     amenity_ids: Optional[List[int]] = None
     images: Optional[List[PropertyImageCreate]] = None

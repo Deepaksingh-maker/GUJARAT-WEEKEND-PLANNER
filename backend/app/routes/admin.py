@@ -145,7 +145,7 @@ def get_all_properties_admin(
 @router.post("/properties/{id}/approve")
 def approve_property(
     id: int,
-    action: AdminApprovalAction,
+    action: Optional[AdminApprovalAction] = None,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -158,10 +158,75 @@ def approve_property(
     db.commit()
     return ApiResponse(success=True, message=f"Property '{prop.name}' approved for public booking")
 
+@router.post("/properties/{id}/pause")
+def pause_property(
+    id: int,
+    action: Optional[AdminApprovalAction] = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    prop = db.query(Property).filter(Property.id == id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    prop.verification_status = ApprovalStatus.PAUSED
+    prop.booking_enabled = False
+    db.commit()
+    note_msg = f" (Reason: {action.notes})" if action and action.notes else ""
+    return ApiResponse(success=True, message=f"Property '{prop.name}' has been paused{note_msg}. Bookings are temporarily paused.")
+
+@router.post("/properties/{id}/block")
+def block_property(
+    id: int,
+    action: Optional[AdminApprovalAction] = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    prop = db.query(Property).filter(Property.id == id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    prop.verification_status = ApprovalStatus.BLOCKED
+    prop.booking_enabled = False
+    db.commit()
+    note_msg = f" (Reason: {action.notes})" if action and action.notes else ""
+    return ApiResponse(success=True, message=f"Property '{prop.name}' has been blocked{note_msg}.")
+
+@router.post("/properties/{id}/resume")
+def resume_property(
+    id: int,
+    action: Optional[AdminApprovalAction] = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    prop = db.query(Property).filter(Property.id == id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    prop.verification_status = ApprovalStatus.APPROVED
+    prop.booking_enabled = True
+    db.commit()
+    return ApiResponse(success=True, message=f"Property '{prop.name}' is now active and bookable.")
+
+@router.delete("/properties/{id}")
+def delete_property_admin(
+    id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    prop = db.query(Property).filter(Property.id == id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    prop_name = prop.name
+    db.delete(prop)
+    db.commit()
+    return ApiResponse(success=True, message=f"Property '{prop_name}' deleted successfully", data="deleted")
+
 @router.post("/properties/{id}/reject")
 def reject_property(
     id: int,
-    action: AdminApprovalAction,
+    action: Optional[AdminApprovalAction] = None,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -170,8 +235,9 @@ def reject_property(
         raise HTTPException(status_code=404, detail="Property not found")
 
     prop.verification_status = ApprovalStatus.REJECTED
+    prop.booking_enabled = False
     db.commit()
-    return ApiResponse(success=True, message=f"Property '{prop.name}' rejected")
+    return ApiResponse(success=True, message=f"Property '{prop.name}' suspended")
 
 # --- ACTIVITY APPROVAL ---
 @router.get("/activities", response_model=ApiResponse[List[ActivityResponse]])

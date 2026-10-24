@@ -72,6 +72,7 @@ export const api = {
     checkAvailability: (data: any) => request<any>("/properties/check-availability", { method: "POST", body: JSON.stringify(data) }),
     create: (data: any) => request<any>("/properties", { method: "POST", body: JSON.stringify(data) }),
     update: (id: number, data: any) => request<any>(`/properties/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: number) => request<any>(`/properties/${id}`, { method: "DELETE" }),
     setAvailability: (id: number, data: any) => request<any>(`/properties/${id}/availability`, { method: "POST", body: JSON.stringify(data) }),
     getAmenities: () => request<any>("/properties/amenities"),
     uploadImage: async (formData: FormData) => {
@@ -161,6 +162,10 @@ export const api = {
     getProperties: (status?: string) => request<any>(`/admin/properties${status ? `?status=${status}` : ""}`),
     approveProperty: (id: number, notes?: string) => request<any>(`/admin/properties/${id}/approve`, { method: "POST", body: JSON.stringify({ status: "approved", notes }) }),
     rejectProperty: (id: number, notes?: string) => request<any>(`/admin/properties/${id}/reject`, { method: "POST", body: JSON.stringify({ status: "rejected", notes }) }),
+    pauseProperty: (id: number, notes?: string) => request<any>(`/admin/properties/${id}/pause`, { method: "POST", body: JSON.stringify({ status: "paused", notes }) }),
+    blockProperty: (id: number, notes?: string) => request<any>(`/admin/properties/${id}/block`, { method: "POST", body: JSON.stringify({ status: "blocked", notes }) }),
+    resumeProperty: (id: number) => request<any>(`/admin/properties/${id}/resume`, { method: "POST" }),
+    deleteProperty: (id: number) => request<any>(`/admin/properties/${id}`, { method: "DELETE" }),
     getActivities: (status?: string) => request<any>(`/admin/activities${status ? `?status=${status}` : ""}`),
     approveActivity: (id: number, notes?: string) => request<any>(`/admin/activities/${id}/approve`, { method: "POST", body: JSON.stringify({ status: "approved", notes }) }),
     rejectActivity: (id: number, notes?: string) => request<any>(`/admin/activities/${id}/reject`, { method: "POST", body: JSON.stringify({ status: "rejected", notes }) }),

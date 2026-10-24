@@ -23,6 +23,8 @@ class ApprovalStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    PAUSED = "paused"
+    BLOCKED = "blocked"
 
 class CancellationPolicyType(str, enum.Enum):
     FLEXIBLE = "flexible"    # Full refund 1 day prior

@@ -29,10 +29,25 @@ import {
   Phone,
   ShieldAlert,
   Eye,
-  MessageSquare
+  MessageSquare,
+  Edit3,
+  Trash2,
+  PauseCircle,
+  PlayCircle,
+  Ban,
+  Search,
+  Filter,
+  Check,
+  AlertTriangle
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import {
+  PropertyViewModal,
+  PropertyEditModal,
+  PauseBlockModal,
+  PropertyDeleteModal
+} from "@/components/admin/AdminPropertyModals";
 import { 
   StatMetricCard, 
   RevenueAreaChart, 
@@ -75,6 +90,15 @@ export default function AdminDashboardPage() {
   const [newCouponMin, setNewCouponMin] = useState(3000);
   const [creatingCoupon, setCreatingCoupon] = useState(false);
 
+  // Property Management State (View, Edit, Pause, Block, Delete, Filter)
+  const [locations, setLocations] = useState<any[]>([]);
+  const [selectedPropertyForView, setSelectedPropertyForView] = useState<any | null>(null);
+  const [selectedPropertyForEdit, setSelectedPropertyForEdit] = useState<any | null>(null);
+  const [propertyToDelete, setPropertyToDelete] = useState<any | null>(null);
+  const [pauseBlockTarget, setPauseBlockTarget] = useState<{ prop: any; action: "pause" | "block"; notes: string } | null>(null);
+  const [propertySearch, setPropertySearch] = useState("");
+  const [propertyStatusFilter, setPropertyStatusFilter] = useState<string>("all");
+
   useEffect(() => {
     if (!isAuthenticated && !authLoading) {
       window.location.href = "/auth/login?redirect=/admin/dashboard";
@@ -89,7 +113,7 @@ export default function AdminDashboardPage() {
   const loadAdminData = async () => {
     try {
       setLoading(true);
-      const [statsRes, hostsRes, propsRes, bookingsRes, couponsRes, revsRes, analyticsRes, contactLogsRes] = await Promise.all([
+      const [statsRes, hostsRes, propsRes, bookingsRes, couponsRes, revsRes, analyticsRes, contactLogsRes, locsRes] = await Promise.all([
         api.admin.getDashboard(),
         api.admin.getHosts(),
         api.admin.getProperties(),
@@ -98,6 +122,7 @@ export default function AdminDashboardPage() {
         api.admin.getReviews(),
         api.admin.getAnalytics(analyticsPeriod),
         api.admin.getContactLogs(),
+        api.locations.getAll().catch(() => ({ success: false, data: [] })),
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
@@ -107,6 +132,7 @@ export default function AdminDashboardPage() {
       if (couponsRes.success) setCoupons(couponsRes.data);
       if (revsRes.success) setReviews(revsRes.data);
       if (analyticsRes?.success) setAnalyticsData(analyticsRes.data);
+      if (locsRes?.success && locsRes.data) setLocations(locsRes.data);
       if (contactLogsRes?.success && contactLogsRes.data) {
         setContactLogs(contactLogsRes.data);
         if (contactLogsRes.data.settings?.contact_protection_mode) {
@@ -172,16 +198,65 @@ export default function AdminDashboardPage() {
       await api.admin.approveProperty(propId, "Approved by Administrator");
       loadAdminData();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || "Failed to approve property");
     }
   };
 
   const handleRejectProperty = async (propId: number) => {
     try {
-      await api.admin.rejectProperty(propId, "Rejected by Administrator");
+      await api.admin.rejectProperty(propId, "Suspended by Administrator");
       loadAdminData();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || "Failed to suspend property");
+    }
+  };
+
+  const handlePausePropertyConfirm = async (notes: string) => {
+    if (!pauseBlockTarget?.prop) return;
+    try {
+      await api.admin.pauseProperty(pauseBlockTarget.prop.id, notes || "Paused by Administrator");
+      loadAdminData();
+    } catch (err: any) {
+      alert(err.message || "Failed to pause property");
+    }
+  };
+
+  const handleBlockPropertyConfirm = async (notes: string) => {
+    if (!pauseBlockTarget?.prop) return;
+    try {
+      await api.admin.blockProperty(pauseBlockTarget.prop.id, notes || "Blocked by Administrator");
+      loadAdminData();
+    } catch (err: any) {
+      alert(err.message || "Failed to block property");
+    }
+  };
+
+  const handleResumeProperty = async (propId: number) => {
+    try {
+      await api.admin.resumeProperty(propId);
+      loadAdminData();
+    } catch (err: any) {
+      alert(err.message || "Failed to activate property");
+    }
+  };
+
+  const handleDeletePropertyConfirm = async () => {
+    if (!propertyToDelete) return;
+    try {
+      await api.admin.deleteProperty(propertyToDelete.id);
+      loadAdminData();
+    } catch (err: any) {
+      alert(err.message || "Failed to delete property");
+    }
+  };
+
+  const handleSaveEditProperty = async (updatedData: any) => {
+    if (!selectedPropertyForEdit) return;
+    const res = await api.properties.update(selectedPropertyForEdit.id, updatedData);
+    if (res.success) {
+      loadAdminData();
+    } else {
+      throw new Error(res.message || "Failed to update property");
     }
   };
 
@@ -305,8 +380,10 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
-              <span className="text-[11px] font-bold text-stone-400 uppercase">Pending Stays</span>
-              <p className="text-xl font-black text-amber-600">{stats?.pending_property_approvals || 0}</p>
+              <span className="text-[11px] font-bold text-stone-400 uppercase">Live Stays</span>
+              <p className="text-xl font-black text-emerald-600">
+                {properties.filter((p) => (p.verification_status || "").toLowerCase() === "approved").length || stats?.total_properties || 0}
+              </p>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
@@ -337,104 +414,177 @@ export default function AdminDashboardPage() {
             </button>
           </div>
 
-          {/* Pending Approvals Callout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Pending Hosts */}
-            <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-4">
-              <h3 className="font-extrabold text-base text-stone-900 flex items-center justify-between">
-                <span>Pending Host Approvals</span>
-                <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                  {hosts.filter((h) => h.verification_status === "pending").length}
-                </span>
-              </h3>
-
-              <div className="space-y-3">
-                {hosts.filter((h) => h.verification_status === "pending").map((h) => (
-                  <div key={h.id} className="p-4 bg-stone-50 rounded-2xl flex items-center justify-between text-xs">
-                    <div>
-                      <p className="font-bold text-stone-900">{h.business_name}</p>
-                      <p className="text-stone-500">{h.user_name} • {h.host_type}</p>
+          {/* Real-Time Platform Overview (Bookings & Stays Operations) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Recent Reservations */}
+            <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-4 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+                      <Calendar className="w-4 h-4" />
                     </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleApproveHost(h.id)}
-                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-bold"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleRejectHost(h.id)}
-                        className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-bold"
-                      >
-                        Reject
-                      </button>
+                    <div>
+                      <h3 className="font-extrabold text-base text-stone-900">Recent Guest Reservations</h3>
+                      <p className="text-[11px] text-stone-400">Live booking stream across Gujarat</p>
                     </div>
                   </div>
-                ))}
-                {hosts.filter((h) => h.verification_status === "pending").length === 0 && (
-                  <p className="text-xs text-stone-400 py-3 text-center">No pending host verifications.</p>
-                )}
+                  <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-100">
+                    {bookings.length} Total
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {bookings.slice(0, 5).map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-3.5 bg-stone-50 hover:bg-stone-100/80 rounded-2xl flex items-center justify-between text-xs transition-colors"
+                    >
+                      <div className="space-y-0.5 max-w-[220px] sm:max-w-xs">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-stone-900">{b.customer_name || `Guest #${b.customer_id}`}</span>
+                          <span className="text-[10px] text-stone-400 font-mono">#{b.booking_code || b.id}</span>
+                        </div>
+                        <p className="text-[11px] text-stone-600 truncate font-medium">
+                          {b.property?.name || `Stay #${b.property_id}`}
+                        </p>
+                        <p className="text-[10px] text-stone-400">
+                          📅 {b.check_in} → {b.check_out}
+                        </p>
+                      </div>
+
+                      <div className="text-right flex-shrink-0 space-y-1">
+                        <span className="font-black text-stone-900 block">₹{b.total_price || b.total_amount || 0}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase inline-block ${
+                            b.status === "confirmed" || b.status === "completed"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : b.status === "cancelled"
+                              ? "bg-rose-100 text-rose-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {b.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {bookings.length === 0 && (
+                    <div className="py-10 text-center text-stone-400 space-y-1">
+                      <Calendar className="w-8 h-8 mx-auto text-stone-300" />
+                      <p className="font-bold text-stone-600 text-xs">No bookings recorded yet</p>
+                      <p className="text-[11px] text-stone-400">Customer reservations will appear here live as they book.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-stone-100">
+                <button
+                  onClick={() => setActiveTab("bookings")}
+                  className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <span>View All Platform Reservations ({bookings.length})</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
 
-            {/* Pending Properties */}
-            <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-4">
-              <h3 className="font-extrabold text-base text-stone-900 flex items-center justify-between">
-                <span>Pending Property Approvals</span>
-                <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                  {properties.filter((p) => p.verification_status === "pending").length}
-                </span>
-              </h3>
-
-              <div className="space-y-3">
-                {properties.filter((p) => p.verification_status === "pending").map((p) => {
-                  const coverImg = p.images?.find((img: any) => img.is_cover || img.is_primary)?.image_url || p.images?.[0]?.image_url;
-                  return (
-                    <div key={p.id} className="p-4 bg-stone-50 rounded-2xl flex items-center justify-between text-xs gap-3">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-14 h-11 rounded-xl overflow-hidden bg-stone-200 flex-shrink-0 relative border border-stone-200">
-                          {coverImg ? (
-                            <img
-                              src={coverImg}
-                              alt=""
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                e.currentTarget.onerror = null;
-                                e.currentTarget.src = "https://images.unsplash.com/photo-1587061949409-02df41d5e562?auto=format&fit=crop&w=400&q=80";
-                              }}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[10px] text-stone-400 font-bold">No img</div>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-bold text-stone-900">{p.name}</p>
-                          <p className="text-stone-500">
-                            {p.location?.name} • ₹{p.price_per_night}/night • <span className="font-semibold text-emerald-700">{p.images?.length || 0} photos</span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex space-x-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleApproveProperty(p.id)}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleRejectProperty(p.id)}
-                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold"
-                        >
-                          Reject
-                        </button>
-                      </div>
+            {/* Gujarat Stays Fleet & Auto-Approval Monitor */}
+            <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-5 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-purple-50 text-purple-700 rounded-xl">
+                      <Building2 className="w-4 h-4" />
                     </div>
-                  );
-                })}
-                {properties.filter((p) => p.verification_status === "pending").length === 0 && (
-                  <p className="text-xs text-stone-400 py-3 text-center">All properties approved.</p>
-                )}
+                    <div>
+                      <h3 className="font-extrabold text-base text-stone-900">Gujarat Stays Operations</h3>
+                      <p className="text-[11px] text-stone-400">Real-time listing health & moderation status</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 flex items-center gap-1 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Auto-Approve Active
+                  </span>
+                </div>
+
+                {/* Auto-Approval Info Banner */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/70 via-teal-50/50 to-stone-50 border border-emerald-200/80 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wide">
+                      Instant Host Publishing Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Host listings are published directly into the Gujarat directory upon creation. If any issues or disputes arise, administrators can pause or block stays instantly from the Stays Management tab.
+                  </p>
+                </div>
+
+                {/* Fleet Health Breakdown */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-center">
+                    <span className="text-[10px] font-bold text-stone-400 uppercase block">Live & Bookable</span>
+                    <p className="text-lg font-black text-emerald-700 mt-0.5">
+                      {properties.filter((p) => (p.verification_status || "").toLowerCase() === "approved").length}
+                    </p>
+                    <span className="text-[9px] text-stone-400">Open for bookings</span>
+                  </div>
+
+                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-center">
+                    <span className="text-[10px] font-bold text-stone-400 uppercase block">Paused</span>
+                    <p className="text-lg font-black text-amber-600 mt-0.5">
+                      {properties.filter((p) => (p.verification_status || "").toLowerCase() === "paused").length}
+                    </p>
+                    <span className="text-[9px] text-stone-400">Under maintenance</span>
+                  </div>
+
+                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-center">
+                    <span className="text-[10px] font-bold text-stone-400 uppercase block">Blocked</span>
+                    <p className="text-lg font-black text-rose-600 mt-0.5">
+                      {properties.filter((p) => (p.verification_status || "").toLowerCase() === "blocked").length}
+                    </p>
+                    <span className="text-[9px] text-stone-400">Disputed / Inactive</span>
+                  </div>
+                </div>
+
+                {/* Quick Directory Distribution */}
+                <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                  <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
+                    Property Types Across Gujarat
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
+                    {["villa", "resort", "cottage", "hotel", "homestay"].map((type) => {
+                      const count = properties.filter((p) => p.property_type?.toLowerCase() === type).length;
+                      if (count === 0) return null;
+                      return (
+                        <span key={type} className="px-2.5 py-1 rounded-xl bg-white border border-stone-200 text-stone-700 capitalize">
+                          {type}s: <strong className="text-stone-900">{count}</strong>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-stone-100 flex items-center space-x-2">
+                <button
+                  onClick={() => setActiveTab("properties")}
+                  className="flex-1 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Manage Gujarat Stays</span>
+                </button>
+                <Link
+                  href="/explore"
+                  target="_blank"
+                  className="px-4 py-2.5 rounded-xl border border-stone-200 hover:bg-stone-100 text-stone-700 text-xs font-bold transition-colors flex items-center gap-1"
+                >
+                  <span>Directory</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             </div>
           </div>
@@ -981,91 +1131,337 @@ export default function AdminDashboardPage() {
       )}
 
       {/* PROPERTIES TAB */}
-      {activeTab === "properties" && (
-        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-4">
-          <h3 className="font-extrabold text-lg text-stone-900">Gujarat Stays Management</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-stone-200 text-stone-400 font-bold uppercase">
-                  <th className="py-3 px-4">Stay & Photos</th>
-                  <th className="py-3 px-4">Destination</th>
-                  <th className="py-3 px-4">Type</th>
-                  <th className="py-3 px-4">Price</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100 font-medium text-stone-800">
-                {properties.map((p) => {
-                  const coverImg = p.images?.find((img: any) => img.is_cover || img.is_primary)?.image_url || p.images?.[0]?.image_url;
-                  return (
-                    <tr key={p.id} className="hover:bg-stone-50">
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-12 h-9 rounded-lg overflow-hidden bg-stone-100 flex-shrink-0 border border-stone-200">
-                            {coverImg ? (
-                              <img
-                                src={coverImg}
-                                alt=""
-                                referrerPolicy="no-referrer"
-                                onError={(e) => {
-                                  e.currentTarget.onerror = null;
-                                  e.currentTarget.src = "https://images.unsplash.com/photo-1587061949409-02df41d5e562?auto=format&fit=crop&w=400&q=80";
-                                }}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[9px] text-stone-400">None</div>
-                            )}
-                          </div>
-                          <div>
-                            <span className="font-bold block text-stone-900">{p.name}</span>
-                            <span className="text-[10px] text-stone-400">
-                              {p.images?.length > 0 ? (
-                                <span className="text-emerald-700 font-semibold">{p.images.length} photos attached</span>
+      {activeTab === "properties" && (() => {
+        const approvedCount = properties.filter((p) => p.verification_status?.toLowerCase() === "approved").length;
+        const pausedCount = properties.filter((p) => p.verification_status?.toLowerCase() === "paused").length;
+        const blockedCount = properties.filter((p) => p.verification_status?.toLowerCase() === "blocked").length;
+        const pendingCount = properties.filter((p) => !p.verification_status || p.verification_status?.toLowerCase() === "pending").length;
+
+        const filteredProperties = properties.filter((p) => {
+          const st = (p.verification_status || "pending").toLowerCase();
+          if (propertyStatusFilter !== "all" && st !== propertyStatusFilter) {
+            return false;
+          }
+          if (propertySearch.trim()) {
+            const q = propertySearch.toLowerCase().trim();
+            const nameMatch = p.name?.toLowerCase().includes(q);
+            const locMatch = p.location?.name?.toLowerCase().includes(q);
+            const hostMatch = p.host?.business_name?.toLowerCase().includes(q);
+            const typeMatch = p.property_type?.toLowerCase().includes(q);
+            return nameMatch || locMatch || hostMatch || typeMatch;
+          }
+          return true;
+        });
+
+        return (
+          <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-6">
+            {/* Header & Quick Stats */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
+              <div>
+                <div className="flex items-center space-x-2 text-xs font-bold text-emerald-700 uppercase tracking-widest mb-1">
+                  <Building2 className="w-4 h-4 text-emerald-600" />
+                  <span>Stays Control & Host Moderation</span>
+                </div>
+                <h3 className="font-extrabold text-xl text-stone-900">Gujarat Stays Management</h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  View, edit, pause, or block properties in real-time when host issues or maintenance occur.
+                </p>
+              </div>
+
+              {/* Status Counters */}
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                <span className="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-800 border border-stone-200">
+                  Total: {properties.length}
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Live: {approvedCount}
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Paused: {pausedCount}
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  Blocked: {blockedCount}
+                </span>
+                {pendingCount > 0 && (
+                  <span className="px-3 py-1.5 rounded-xl bg-yellow-50 text-yellow-800 border border-yellow-200 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                    Pending: {pendingCount}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Search & Filter Toolbar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50 p-3 rounded-2xl border border-stone-200">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by stay name, location, host, or type..."
+                  value={propertySearch}
+                  onChange={(e) => setPropertySearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-stone-200 text-xs font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Filter Pills */}
+              <div className="flex items-center gap-1 overflow-x-auto text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPropertyStatusFilter("all")}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
+                    propertyStatusFilter === "all"
+                      ? "bg-stone-900 text-white shadow-sm"
+                      : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                  }`}
+                >
+                  All ({properties.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPropertyStatusFilter("approved")}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
+                    propertyStatusFilter === "approved"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                  }`}
+                >
+                  Live ({approvedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPropertyStatusFilter("paused")}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
+                    propertyStatusFilter === "paused"
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                  }`}
+                >
+                  Paused ({pausedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPropertyStatusFilter("blocked")}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
+                    propertyStatusFilter === "blocked"
+                      ? "bg-rose-600 text-white shadow-sm"
+                      : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                  }`}
+                >
+                  Blocked ({blockedCount})
+                </button>
+                {pendingCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPropertyStatusFilter("pending")}
+                    className={`px-3 py-1.5 rounded-xl transition-all ${
+                      propertyStatusFilter === "pending"
+                        ? "bg-yellow-600 text-white shadow-sm"
+                        : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                    }`}
+                  >
+                    Pending ({pendingCount})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Properties Table */}
+            <div className="overflow-x-auto rounded-2xl border border-stone-200">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[11px]">
+                    <th className="py-3.5 px-4">Stay & Photos</th>
+                    <th className="py-3.5 px-4">Destination</th>
+                    <th className="py-3.5 px-4">Type</th>
+                    <th className="py-3.5 px-4">Price</th>
+                    <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 font-medium text-stone-800">
+                  {filteredProperties.map((p) => {
+                    const coverImg = p.images?.find((img: any) => img.is_cover || img.is_primary)?.image_url || p.images?.[0]?.image_url;
+                    const st = (p.verification_status || "pending").toLowerCase();
+                    const isApproved = st === "approved";
+                    const isPaused = st === "paused";
+                    const isBlocked = st === "blocked";
+                    const isPending = st === "pending";
+
+                    return (
+                      <tr key={p.id} className="hover:bg-stone-50/80 transition-colors">
+                        {/* Stay & Photos */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-14 h-10 rounded-xl overflow-hidden bg-stone-100 flex-shrink-0 border border-stone-200 relative group">
+                              {coverImg ? (
+                                <img
+                                  src={coverImg}
+                                  alt=""
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = "https://images.unsplash.com/photo-1587061949409-02df41d5e562?auto=format&fit=crop&w=400&q=80";
+                                  }}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                />
                               ) : (
-                                <span className="text-amber-600 font-semibold">⚠️ 0 photos</span>
+                                <div className="w-full h-full flex items-center justify-center text-[9px] text-stone-400">None</div>
                               )}
-                            </span>
+                            </div>
+                            <div className="max-w-[200px] sm:max-w-xs">
+                              <span className="font-bold block text-stone-900 truncate" title={p.name}>
+                                {p.name}
+                              </span>
+                              <div className="flex items-center gap-1.5 text-[10px] text-stone-400 mt-0.5">
+                                {p.host?.business_name && (
+                                  <span className="text-stone-600 font-semibold truncate max-w-[120px]">
+                                    Host: {p.host.business_name}
+                                  </span>
+                                )}
+                                <span>•</span>
+                                {p.images?.length > 0 ? (
+                                  <span className="text-emerald-700 font-semibold">{p.images.length} photos</span>
+                                ) : (
+                                  <span className="text-amber-600 font-semibold">⚠️ 0 photos</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">{p.location?.name}</td>
-                      <td className="py-3.5 px-4 capitalize">{p.property_type}</td>
-                      <td className="py-3.5 px-4 font-bold">₹{p.price_per_night}</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          p.verification_status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                        }`}>
-                          {p.verification_status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {p.verification_status !== "approved" ? (
-                          <button
-                            onClick={() => handleApproveProperty(p.id)}
-                            className="text-emerald-600 font-bold hover:underline"
+                        </td>
+
+                        {/* Destination */}
+                        <td className="py-3.5 px-4">
+                          <span className="font-semibold text-stone-800">{p.location?.name || p.city || "Gujarat"}</span>
+                          <span className="block text-[10px] text-stone-400">Gujarat</span>
+                        </td>
+
+                        {/* Type */}
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-stone-100 text-stone-700 border border-stone-200">
+                            {p.property_type}
+                          </span>
+                        </td>
+
+                        {/* Price */}
+                        <td className="py-3.5 px-4">
+                          <span className="font-black text-stone-900 text-sm">₹{p.price_per_night}</span>
+                          <span className="text-[10px] text-stone-400 block">/ night</span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 ${
+                              isApproved
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                : isPaused
+                                ? "bg-amber-100 text-amber-800 border border-amber-300"
+                                : isBlocked
+                                ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                : "bg-stone-100 text-stone-700 border border-stone-300"
+                            }`}
                           >
-                            Approve
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleRejectProperty(p.id)}
-                            className="text-rose-600 font-bold hover:underline"
-                          >
-                            Suspend
-                          </button>
-                        )}
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              isApproved ? "bg-emerald-500" : isPaused ? "bg-amber-500" : isBlocked ? "bg-rose-500" : "bg-stone-400"
+                            }`} />
+                            {p.verification_status || "PENDING"}
+                          </span>
+                        </td>
+
+                        {/* Actions (View, Edit, Pause, Block, Delete) */}
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            {/* VIEW BUTTON */}
+                            <button
+                              onClick={() => setSelectedPropertyForView(p)}
+                              className="p-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors"
+                              title="View full property details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+
+                            {/* EDIT BUTTON */}
+                            <button
+                              onClick={() => setSelectedPropertyForEdit(p)}
+                              className="p-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors"
+                              title="Edit stay details"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+
+                            {/* PAUSE / RESUME / APPROVE BUTTON */}
+                            {isApproved ? (
+                              <button
+                                onClick={() => setPauseBlockTarget({ prop: p, action: "pause", notes: "" })}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold border border-amber-200 transition-colors flex items-center gap-1"
+                                title="Pause bookings for this property"
+                              >
+                                <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Pause</span>
+                              </button>
+                            ) : isPaused || isBlocked ? (
+                              <button
+                                onClick={() => handleResumeProperty(p.id)}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 transition-colors flex items-center gap-1"
+                                title="Resume / Activate property"
+                              >
+                                <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Resume</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleApproveProperty(p.id)}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-colors"
+                                title="Approve property"
+                              >
+                                Approve
+                              </button>
+                            )}
+
+                            {/* BLOCK BUTTON (if not already blocked) */}
+                            {!isBlocked && (
+                              <button
+                                onClick={() => setPauseBlockTarget({ prop: p, action: "block", notes: "" })}
+                                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors border border-rose-200"
+                                title="Block property for violations or disputes"
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            {/* DELETE BUTTON */}
+                            <button
+                              onClick={() => setPropertyToDelete(p)}
+                              className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-600 transition-colors"
+                              title="Delete property permanently"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredProperties.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-stone-400">
+                        <Building2 className="w-8 h-8 mx-auto text-stone-300 mb-2" />
+                        <p className="font-bold text-stone-600">No properties found</p>
+                        <p className="text-[11px] text-stone-400 mt-0.5">Try adjusting your search query or filter selection.</p>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* BOOKINGS TAB */}
       {activeTab === "bookings" && (
@@ -1222,6 +1618,50 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* PROPERTY VIEW MODAL */}
+      <PropertyViewModal
+        isOpen={!!selectedPropertyForView}
+        property={selectedPropertyForView}
+        onClose={() => setSelectedPropertyForView(null)}
+        onEdit={(prop) => setSelectedPropertyForEdit(prop)}
+        onPause={(prop) => setPauseBlockTarget({ prop, action: "pause", notes: "" })}
+        onResume={(prop) => handleResumeProperty(prop.id)}
+        onBlock={(prop) => setPauseBlockTarget({ prop, action: "block", notes: "" })}
+        onDelete={(prop) => setPropertyToDelete(prop)}
+      />
+
+      {/* PROPERTY EDIT MODAL */}
+      <PropertyEditModal
+        isOpen={!!selectedPropertyForEdit}
+        property={selectedPropertyForEdit}
+        locations={locations}
+        onClose={() => setSelectedPropertyForEdit(null)}
+        onSave={handleSaveEditProperty}
+      />
+
+      {/* PAUSE / BLOCK MODAL */}
+      <PauseBlockModal
+        isOpen={!!pauseBlockTarget}
+        property={pauseBlockTarget?.prop}
+        actionType={pauseBlockTarget?.action || "pause"}
+        onClose={() => setPauseBlockTarget(null)}
+        onConfirm={async (notes) => {
+          if (pauseBlockTarget?.action === "block") {
+            await handleBlockPropertyConfirm(notes);
+          } else {
+            await handlePausePropertyConfirm(notes);
+          }
+        }}
+      />
+
+      {/* PROPERTY DELETE MODAL */}
+      <PropertyDeleteModal
+        isOpen={!!propertyToDelete}
+        property={propertyToDelete}
+        onClose={() => setPropertyToDelete(null)}
+        onConfirm={handleDeletePropertyConfirm}
+      />
     </div>
   );
 }

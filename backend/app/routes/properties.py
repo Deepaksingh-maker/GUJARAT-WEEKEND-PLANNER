@@ -627,7 +627,7 @@ def create_property(
         check_out_time=prop_in.check_out_time,
         house_rules=prop_in.house_rules,
         cancellation_policy=prop_in.cancellation_policy,
-        verification_status=ApprovalStatus.PENDING,  # Must be approved by Admin
+        verification_status=ApprovalStatus.APPROVED,  # Auto-added & approved immediately
         booking_enabled=True,
         is_featured=False,
         source_reference=f"Submitted by {host.business_name if host else 'Host'}"
@@ -898,5 +898,21 @@ def update_property(
         success=True,
         message="Property updated successfully",
         data=build_property_response(prop, current_user, db)
+    )
+
+@router.delete("/{id}", response_model=ApiResponse[str])
+def delete_property(
+    id: int,
+    current_user: User = Depends(require_host),
+    db: Session = Depends(get_db)
+):
+    prop = verify_host_property_access(id, current_user, db)
+    prop_name = prop.name
+    db.delete(prop)
+    db.commit()
+    return ApiResponse(
+        success=True,
+        message=f"Property '{prop_name}' deleted successfully",
+        data="deleted"
     )
 

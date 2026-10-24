@@ -20,7 +20,7 @@ class AdminDashboardStats(BaseModel):
     reviews_count: int
 
 class AdminApprovalAction(BaseModel):
-    status: str  # approved, rejected
+    status: Optional[str] = None  # approved, rejected, paused, blocked
     notes: Optional[str] = None
 
 class AdminUserUpdate(BaseModel):
