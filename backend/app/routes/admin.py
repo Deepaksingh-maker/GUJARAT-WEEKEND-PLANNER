@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
@@ -6,12 +7,18 @@ from sqlalchemy import desc, func
 from backend.app.database import get_db
 from backend.app.models.user import User, UserRole
 from backend.app.models.host import Host, VerificationStatus
-from backend.app.models.property import Property, ApprovalStatus
+from backend.app.models.property import Property, ApprovalStatus, InventoryBlock
 from backend.app.models.activity import Activity
 from backend.app.models.booking import Booking, BookingStatus, PaymentStatus
 from backend.app.models.review import Review
 from backend.app.schemas.common import ApiResponse
-from backend.app.schemas.admin import AdminDashboardStats, AdminApprovalAction, AdminUserUpdate
+from backend.app.schemas.admin import (
+    AdminDashboardStats,
+    AdminApprovalAction,
+    AdminUserUpdate,
+    BookingInsightsResponse,
+    RecentBookingActivityItem
+)
 from backend.app.schemas.user import UserResponse
 from backend.app.schemas.property import PropertyResponse
 from backend.app.schemas.activity import ActivityResponse
@@ -63,6 +70,79 @@ def get_admin_dashboard(
         reviews_count=reviews_count
     )
     return ApiResponse(success=True, data=stats)
+
+@router.get("/booking-insights", response_model=ApiResponse[BookingInsightsResponse])
+def get_admin_booking_insights(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    IST = timezone(timedelta(hours=5, minutes=30))
+    today_ist = datetime.now(IST).date()
+
+    # 1. Pending Bookings: awaiting host confirmation or required action
+    pending_count = db.query(Booking).filter(
+        Booking.status.in_([BookingStatus.PENDING, BookingStatus.PAYMENT_PENDING])
+    ).count()
+
+    # 2. Upcoming Check-ins: confirmed bookings with check-in dates in the future
+    upcoming_count = db.query(Booking).filter(
+        Booking.status == BookingStatus.CONFIRMED,
+        Booking.check_in > today_ist
+    ).count()
+
+    # 3. Today's Check-ins: confirmed bookings scheduled to check in today
+    today_count = db.query(Booking).filter(
+        Booking.status == BookingStatus.CONFIRMED,
+        Booking.check_in == today_ist
+    ).count()
+
+    # 4. Availability Issues: properties with unresolved inventory blocks, maintenance conflicts, or paused/blocked
+    paused_or_blocked = db.query(Property.id).filter(
+        (Property.verification_status.in_([ApprovalStatus.PAUSED, ApprovalStatus.BLOCKED])) |
+        (Property.booking_enabled == False)
+    ).all()
+    paused_or_blocked_ids = {p[0] for p in paused_or_blocked}
+
+    active_blocks = db.query(InventoryBlock.property_id).filter(
+        InventoryBlock.end_date >= today_ist
+    ).all()
+    active_block_ids = {b[0] for b in active_blocks}
+
+    availability_issues_ids = paused_or_blocked_ids.union(active_block_ids)
+    availability_issues_count = len(availability_issues_ids)
+
+    # 5. Recent Booking Activity (up to 5 records)
+    recent_bookings = db.query(Booking).order_by(desc(Booking.created_at)).limit(5).all()
+    recent_activity = []
+    for b in recent_bookings:
+        prop_name = b.property.name if b.property else "Gujarat Stay"
+        cust_name = b.customer.full_name if b.customer else f"Guest #{b.customer_id}"
+        recent_activity.append(
+            RecentBookingActivityItem(
+                id=b.id,
+                booking_code=b.booking_code,
+                property_name=prop_name,
+                property_id=b.property_id,
+                check_in=str(b.check_in) if b.check_in else "TBD",
+                check_out=str(b.check_out) if b.check_out else None,
+                status=b.status.value if hasattr(b.status, "value") else str(b.status),
+                payment_status=b.payment_status.value if hasattr(b.payment_status, "value") else str(b.payment_status),
+                total=float(b.total or 0.0),
+                created_at=b.created_at,
+                customer_name=cust_name
+            )
+        )
+
+    return ApiResponse(
+        success=True,
+        data=BookingInsightsResponse(
+            pending_bookings_count=pending_count,
+            upcoming_checkins_count=upcoming_count,
+            today_checkins_count=today_count,
+            availability_issues_count=availability_issues_count,
+            recent_activity=recent_activity
+        )
+    )
 
 # --- HOST VERIFICATION ---
 @router.get("/hosts")

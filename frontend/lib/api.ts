@@ -155,6 +155,7 @@ export const api = {
   },
   admin: {
     getDashboard: () => request<any>("/admin/dashboard"),
+    getBookingInsights: () => request<any>("/admin/booking-insights"),
     getAnalytics: (period?: string) => request<any>(`/admin/analytics${period ? `?period=${period}` : ""}`),
     getHosts: (status?: string) => request<any>(`/admin/hosts${status ? `?status=${status}` : ""}`),
     approveHost: (id: number, notes?: string) => request<any>(`/admin/hosts/${id}/approve`, { method: "POST", body: JSON.stringify({ status: "approved", notes }) }),

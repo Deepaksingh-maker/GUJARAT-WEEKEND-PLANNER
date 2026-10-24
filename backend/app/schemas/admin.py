@@ -26,3 +26,23 @@ class AdminApprovalAction(BaseModel):
 class AdminUserUpdate(BaseModel):
     is_active: Optional[bool] = None
     role: Optional[str] = None
+
+class RecentBookingActivityItem(BaseModel):
+    id: int
+    booking_code: str
+    property_name: str
+    property_id: Optional[int] = None
+    check_in: str
+    check_out: Optional[str] = None
+    status: str
+    payment_status: Optional[str] = None
+    total: float
+    created_at: datetime
+    customer_name: Optional[str] = None
+
+class BookingInsightsResponse(BaseModel):
+    pending_bookings_count: int
+    upcoming_checkins_count: int
+    today_checkins_count: int
+    availability_issues_count: int
+    recent_activity: List[RecentBookingActivityItem]

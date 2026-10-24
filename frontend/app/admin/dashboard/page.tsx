@@ -38,7 +38,11 @@ import {
   Search,
   Filter,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Clock,
+  X,
+  ExternalLink,
+  Copy
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -99,6 +103,12 @@ export default function AdminDashboardPage() {
   const [propertySearch, setPropertySearch] = useState("");
   const [propertyStatusFilter, setPropertyStatusFilter] = useState<string>("all");
 
+  // Booking & Availability Insights State
+  const [bookingInsights, setBookingInsights] = useState<any | null>(null);
+  const [bookingFilter, setBookingFilter] = useState<string>("all");
+  const [bookingSearch, setBookingSearch] = useState<string>("");
+  const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<any | null>(null);
+
   useEffect(() => {
     if (!isAuthenticated && !authLoading) {
       window.location.href = "/auth/login?redirect=/admin/dashboard";
@@ -113,7 +123,7 @@ export default function AdminDashboardPage() {
   const loadAdminData = async () => {
     try {
       setLoading(true);
-      const [statsRes, hostsRes, propsRes, bookingsRes, couponsRes, revsRes, analyticsRes, contactLogsRes, locsRes] = await Promise.all([
+      const [statsRes, hostsRes, propsRes, bookingsRes, couponsRes, revsRes, analyticsRes, contactLogsRes, locsRes, insightsRes] = await Promise.all([
         api.admin.getDashboard(),
         api.admin.getHosts(),
         api.admin.getProperties(),
@@ -123,6 +133,7 @@ export default function AdminDashboardPage() {
         api.admin.getAnalytics(analyticsPeriod),
         api.admin.getContactLogs(),
         api.locations.getAll().catch(() => ({ success: false, data: [] })),
+        api.admin.getBookingInsights().catch(() => ({ success: false, data: null })),
       ]);
 
       if (statsRes.success) setStats(statsRes.data);
@@ -133,6 +144,7 @@ export default function AdminDashboardPage() {
       if (revsRes.success) setReviews(revsRes.data);
       if (analyticsRes?.success) setAnalyticsData(analyticsRes.data);
       if (locsRes?.success && locsRes.data) setLocations(locsRes.data);
+      if (insightsRes?.success && insightsRes.data) setBookingInsights(insightsRes.data);
       if (contactLogsRes?.success && contactLogsRes.data) {
         setContactLogs(contactLogsRes.data);
         if (contactLogsRes.data.settings?.contact_protection_mode) {
@@ -297,6 +309,177 @@ export default function AdminDashboardPage() {
       alert(err.message);
     }
   };
+
+  // --- IST Date & Format Helpers ---
+  const todayIST = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const formatCheckInDate = (dateStr?: string) => {
+    if (!dateStr) return "TBD";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(d);
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const formatTimestamp = (ts?: string) => {
+    if (!ts) return "Recently";
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(d);
+    } catch {
+      return ts;
+    }
+  };
+
+  const formatTimeAgo = (dateStr?: string) => {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+      if (diffSec < 60) return "Just now";
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays < 30) return `${diffDays}d ago`;
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "numeric",
+        month: "short",
+      }).format(date);
+    } catch {
+      return "";
+    }
+  };
+
+  const getStatusBadge = (status?: string) => {
+    const s = (status || "").toLowerCase();
+    if (s === "confirmed" || s === "completed") {
+      return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    }
+    if (s === "pending" || s === "payment_pending") {
+      return "bg-amber-100 text-amber-800 border-amber-200";
+    }
+    if (s === "cancelled") {
+      return "bg-rose-100 text-rose-800 border-rose-200";
+    }
+    if (s === "expired") {
+      return "bg-stone-200 text-stone-700 border-stone-300";
+    }
+    return "bg-stone-100 text-stone-600 border-stone-200";
+  };
+
+  // --- Booking & Availability Metric Calculations ---
+  const pendingCountCalc = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    return s === "pending" || s === "payment_pending";
+  }).length;
+
+  const upcomingCountCalc = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    return s === "confirmed" && b.check_in && b.check_in > todayIST;
+  }).length;
+
+  const todayCountCalc = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    return s === "confirmed" && b.check_in && b.check_in === todayIST;
+  }).length;
+
+  const confirmedCountCalc = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    return s === "confirmed" || s === "completed";
+  }).length;
+
+  const cancelledCountCalc = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    return s === "cancelled";
+  }).length;
+
+  const expiredCountCalc = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    return s === "expired";
+  }).length;
+
+  const issuesCountCalc = properties.filter((p) => {
+    const s = (p.verification_status || "").toLowerCase();
+    return s === "paused" || s === "blocked" || p.booking_enabled === false;
+  }).length;
+
+  const pendingBookingsCount = bookingInsights?.pending_bookings_count ?? pendingCountCalc;
+  const upcomingCheckinsCount = bookingInsights?.upcoming_checkins_count ?? upcomingCountCalc;
+  const todayCheckinsCount = bookingInsights?.today_checkins_count ?? todayCountCalc;
+  const availabilityIssuesCount = bookingInsights?.availability_issues_count ?? issuesCountCalc;
+
+  const recentActivityList: any[] = (bookingInsights?.recent_activity && bookingInsights.recent_activity.length > 0)
+    ? bookingInsights.recent_activity
+    : bookings.slice(0, 5).map((b: any) => ({
+        id: b.id,
+        booking_code: b.booking_code,
+        property_name: b.property?.name || `Stay #${b.property_id}`,
+        property_id: b.property_id,
+        check_in: b.check_in,
+        check_out: b.check_out,
+        status: b.status,
+        payment_status: b.payment_status,
+        total: b.total || b.total_price || b.total_amount || 0,
+        created_at: b.created_at,
+        customer_name: b.customer?.full_name || b.customer_name || `Guest #${b.customer_id}`
+      }));
+
+  const handleOpenBookingDetails = (bItem: any) => {
+    const matched = bookings.find((b) => b.id === bItem.id || b.booking_code === bItem.booking_code);
+    setSelectedBookingForDetail(matched || bItem);
+  };
+
+  const filteredBookings = bookings.filter((b) => {
+    const s = (b.status || "").toLowerCase();
+    if (bookingFilter === "pending") {
+      if (s !== "pending" && s !== "payment_pending") return false;
+    } else if (bookingFilter === "upcoming") {
+      if (s !== "confirmed" || !b.check_in || b.check_in <= todayIST) return false;
+    } else if (bookingFilter === "today") {
+      if (s !== "confirmed" || !b.check_in || b.check_in !== todayIST) return false;
+    } else if (bookingFilter === "confirmed") {
+      if (s !== "confirmed" && s !== "completed") return false;
+    } else if (bookingFilter === "cancelled") {
+      if (s !== "cancelled") return false;
+    } else if (bookingFilter === "expired") {
+      if (s !== "expired") return false;
+    }
+
+    if (bookingSearch.trim()) {
+      const q = bookingSearch.toLowerCase().trim();
+      const codeMatch = b.booking_code?.toLowerCase().includes(q);
+      const propMatch = b.property?.name?.toLowerCase().includes(q);
+      const custMatch = (b.customer?.full_name || b.customer_name)?.toLowerCase().includes(q);
+      const emailMatch = b.customer?.email?.toLowerCase().includes(q);
+      return codeMatch || propMatch || custMatch || emailMatch;
+    }
+    return true;
+  });
 
   if (!isAdmin && !authLoading && isAuthenticated) {
     return (
@@ -491,100 +674,213 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Gujarat Stays Fleet & Auto-Approval Monitor */}
-            <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-5 flex flex-col justify-between">
+            {/* Booking & Availability Insights (Replaces Gujarat Stays Operations) */}
+            <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-4 flex flex-col justify-between">
               <div className="space-y-4">
+                {/* Header */}
                 <div className="flex items-center justify-between pb-3 border-b border-stone-100">
                   <div className="flex items-center space-x-2">
                     <div className="p-2 bg-purple-50 text-purple-700 rounded-xl">
-                      <Building2 className="w-4 h-4" />
+                      <Activity className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="font-extrabold text-base text-stone-900">Gujarat Stays Operations</h3>
-                      <p className="text-[11px] text-stone-400">Real-time listing health & moderation status</p>
+                      <h3 className="font-extrabold text-base text-stone-900">Booking & Availability Insights</h3>
+                      <p className="text-[11px] text-stone-400">Live operational health, check-ins & action queue</p>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 flex items-center gap-1 border border-emerald-200">
+                  <span
+                    className="text-[10px] font-bold text-stone-500 bg-stone-100 px-2.5 py-0.5 rounded-full border border-stone-200 flex items-center gap-1.5"
+                    title="Live calculations using Asia/Kolkata (IST, UTC+05:30)"
+                  >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Auto-Approve Active
+                    IST Live Sync
                   </span>
                 </div>
 
-                {/* Auto-Approval Info Banner */}
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/70 via-teal-50/50 to-stone-50 border border-emerald-200/80 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-600" />
-                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wide">
-                      Instant Host Publishing Active
-                    </span>
-                  </div>
-                  <p className="text-xs text-stone-600 leading-relaxed">
-                    Host listings are published directly into the Gujarat directory upon creation. If any issues or disputes arise, administrators can pause or block stays instantly from the Stays Management tab.
-                  </p>
+                {/* 4 Compact Metric Sections */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {/* 1. Pending Bookings */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("bookings");
+                      setBookingFilter("pending");
+                    }}
+                    className="p-3 bg-amber-50/70 hover:bg-amber-100/80 rounded-2xl border border-amber-200 text-left transition-all group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                        Pending
+                      </span>
+                      <ArrowUpRight className="w-3 h-3 text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="my-1">
+                      <span className="text-xl font-black text-amber-950 block">
+                        {pendingBookingsCount}
+                      </span>
+                      <span className="text-[9px] text-amber-700 font-semibold block leading-tight">
+                        Requires action
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* 2. Upcoming Check-ins */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("bookings");
+                      setBookingFilter("upcoming");
+                    }}
+                    className="p-3 bg-purple-50/70 hover:bg-purple-100/80 rounded-2xl border border-purple-200 text-left transition-all group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider">
+                        Upcoming
+                      </span>
+                      <ArrowUpRight className="w-3 h-3 text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="my-1">
+                      <span className="text-xl font-black text-purple-950 block">
+                        {upcomingCheckinsCount}
+                      </span>
+                      <span className="text-[9px] text-purple-700 font-semibold block leading-tight">
+                        Confirmed future
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* 3. Today's Check-ins */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("bookings");
+                      setBookingFilter("today");
+                    }}
+                    className="p-3 bg-emerald-50/70 hover:bg-emerald-100/80 rounded-2xl border border-emerald-200 text-left transition-all group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
+                        Today's In
+                      </span>
+                      <ArrowUpRight className="w-3 h-3 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="my-1">
+                      <span className="text-xl font-black text-emerald-950 block">
+                        {todayCheckinsCount}
+                      </span>
+                      <span className="text-[9px] text-emerald-700 font-semibold block leading-tight">
+                        Arriving today
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* 4. Availability Issues */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("properties");
+                      setPropertyStatusFilter("issues");
+                    }}
+                    className="p-3 bg-rose-50/70 hover:bg-rose-100/80 rounded-2xl border border-rose-200 text-left transition-all group flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">
+                        Issues
+                      </span>
+                      <ArrowUpRight className="w-3 h-3 text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="my-1">
+                      <span className="text-xl font-black text-rose-950 block">
+                        {availabilityIssuesCount}
+                      </span>
+                      <span className="text-[9px] text-rose-700 font-semibold block leading-tight">
+                        Paused / Blocked
+                      </span>
+                    </div>
+                  </button>
                 </div>
 
-                {/* Fleet Health Breakdown */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-center">
-                    <span className="text-[10px] font-bold text-stone-400 uppercase block">Live & Bookable</span>
-                    <p className="text-lg font-black text-emerald-700 mt-0.5">
-                      {properties.filter((p) => (p.verification_status || "").toLowerCase() === "approved").length}
-                    </p>
-                    <span className="text-[9px] text-stone-400">Open for bookings</span>
+                {/* Recent Booking Activity */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider px-0.5">
+                    <span>Recent Booking Activity</span>
+                    <span className="text-[10px] text-stone-400 font-normal">Click to inspect</span>
                   </div>
 
-                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-center">
-                    <span className="text-[10px] font-bold text-stone-400 uppercase block">Paused</span>
-                    <p className="text-lg font-black text-amber-600 mt-0.5">
-                      {properties.filter((p) => (p.verification_status || "").toLowerCase() === "paused").length}
-                    </p>
-                    <span className="text-[9px] text-stone-400">Under maintenance</span>
-                  </div>
+                  <div className="space-y-2">
+                    {recentActivityList.slice(0, 5).map((item: any) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleOpenBookingDetails(item)}
+                        className="w-full text-left p-3 bg-stone-50 hover:bg-stone-100/90 rounded-2xl border border-stone-200/80 flex items-center justify-between text-xs transition-colors group"
+                      >
+                        <div className="space-y-0.5 max-w-[210px] sm:max-w-xs">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="font-bold text-stone-900 group-hover:text-purple-900 truncate block">
+                              {item.property_name}
+                            </span>
+                            <span className="text-[10px] text-stone-400 font-mono flex-shrink-0">
+                              #{item.booking_code}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-stone-500 flex items-center gap-1.5">
+                            <span>📅 In: {formatCheckInDate(item.check_in)}</span>
+                            <span>•</span>
+                            <span className="text-stone-400">{formatTimeAgo(item.created_at)}</span>
+                          </p>
+                        </div>
 
-                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-center">
-                    <span className="text-[10px] font-bold text-stone-400 uppercase block">Blocked</span>
-                    <p className="text-lg font-black text-rose-600 mt-0.5">
-                      {properties.filter((p) => (p.verification_status || "").toLowerCase() === "blocked").length}
-                    </p>
-                    <span className="text-[9px] text-stone-400">Disputed / Inactive</span>
-                  </div>
-                </div>
+                        <div className="text-right flex-shrink-0 space-y-1">
+                          <span className="font-black text-stone-900 block">₹{item.total}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase inline-block border ${getStatusBadge(
+                              item.status
+                            )}`}
+                          >
+                            {item.status}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
 
-                {/* Quick Directory Distribution */}
-                <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
-                  <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-                    Property Types Across Gujarat
-                  </span>
-                  <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
-                    {["villa", "resort", "cottage", "hotel", "homestay"].map((type) => {
-                      const count = properties.filter((p) => p.property_type?.toLowerCase() === type).length;
-                      if (count === 0) return null;
-                      return (
-                        <span key={type} className="px-2.5 py-1 rounded-xl bg-white border border-stone-200 text-stone-700 capitalize">
-                          {type}s: <strong className="text-stone-900">{count}</strong>
-                        </span>
-                      );
-                    })}
+                    {recentActivityList.length === 0 && (
+                      <div className="py-8 text-center text-stone-400 space-y-1 bg-stone-50 rounded-2xl border border-stone-200/80">
+                        <Calendar className="w-7 h-7 mx-auto text-stone-300" />
+                        <p className="font-bold text-stone-600 text-xs">No recent booking activity</p>
+                        <p className="text-[11px] text-stone-400">
+                          Reservations will appear here live as guests book stays.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-stone-100 flex items-center space-x-2">
+              {/* Quick Actions */}
+              <div className="pt-3 border-t border-stone-100 grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => setActiveTab("properties")}
-                  className="flex-1 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("bookings");
+                    setBookingFilter("all");
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Manage Gujarat Stays</span>
-                </button>
-                <Link
-                  href="/explore"
-                  target="_blank"
-                  className="px-4 py-2.5 rounded-xl border border-stone-200 hover:bg-stone-100 text-stone-700 text-xs font-bold transition-colors flex items-center gap-1"
-                >
-                  <span>Directory</span>
+                  <span>View All Bookings</span>
                   <ArrowUpRight className="w-3.5 h-3.5" />
-                </Link>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("bookings");
+                    setBookingFilter("pending");
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Review Pending ({pendingBookingsCount})</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1139,7 +1435,10 @@ export default function AdminDashboardPage() {
 
         const filteredProperties = properties.filter((p) => {
           const st = (p.verification_status || "pending").toLowerCase();
-          if (propertyStatusFilter !== "all" && st !== propertyStatusFilter) {
+          if (propertyStatusFilter === "issues") {
+            const isIssue = st === "paused" || st === "blocked" || p.booking_enabled === false;
+            if (!isIssue) return false;
+          } else if (propertyStatusFilter !== "all" && st !== propertyStatusFilter) {
             return false;
           }
           if (propertySearch.trim()) {
@@ -1252,6 +1551,17 @@ export default function AdminDashboardPage() {
                   }`}
                 >
                   Blocked ({blockedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPropertyStatusFilter("issues")}
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
+                    propertyStatusFilter === "issues"
+                      ? "bg-rose-700 text-white shadow-sm ring-2 ring-rose-300"
+                      : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
+                  }`}
+                >
+                  ⚠️ Issues ({availabilityIssuesCount})
                 </button>
                 {pendingCount > 0 && (
                   <button
@@ -1465,41 +1775,215 @@ export default function AdminDashboardPage() {
 
       {/* BOOKINGS TAB */}
       {activeTab === "bookings" && (
-        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-4">
-          <h3 className="font-extrabold text-lg text-stone-900">All Platform Reservations</h3>
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm space-y-6">
+          {/* Header & Quick Summary */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
+            <div>
+              <div className="flex items-center space-x-2 text-xs font-bold text-purple-700 uppercase tracking-widest mb-1">
+                <Calendar className="w-4 h-4 text-purple-600" />
+                <span>Reservations Control & Guest Passes</span>
+              </div>
+              <h3 className="font-extrabold text-xl text-stone-900">Platform Bookings Management</h3>
+              <p className="text-xs text-stone-500 mt-0.5">
+                Review guest reservations, inspect check-in dates, and monitor confirmed vs pending bookings.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+              <span className="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-800 border border-stone-200">
+                Total: {bookings.length}
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200">
+                Pending: {pendingBookingsCount}
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-800 border border-purple-200">
+                Upcoming: {upcomingCheckinsCount}
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200">
+                Today: {todayCheckinsCount}
+              </span>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50 p-3 rounded-2xl border border-stone-200">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by booking code, property, guest name, or email..."
+                value={bookingSearch}
+                onChange={(e) => setBookingSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-stone-200 text-xs font-semibold text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1 overflow-x-auto text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setBookingFilter("all")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "all"
+                    ? "bg-stone-900 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                All ({bookings.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingFilter("pending")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "pending"
+                    ? "bg-amber-600 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                Pending ({pendingBookingsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingFilter("today")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "today"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                Today ({todayCheckinsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingFilter("upcoming")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "upcoming"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                Upcoming ({upcomingCheckinsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingFilter("confirmed")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "confirmed"
+                    ? "bg-emerald-700 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                Confirmed ({confirmedCountCalc})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingFilter("cancelled")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "cancelled"
+                    ? "bg-rose-600 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                Cancelled ({cancelledCountCalc})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingFilter("expired")}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  bookingFilter === "expired"
+                    ? "bg-stone-600 text-white shadow-sm"
+                    : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
+                }`}
+              >
+                Expired ({expiredCountCalc})
+              </button>
+            </div>
+          </div>
+
+          {/* Bookings Table */}
+          <div className="overflow-x-auto rounded-2xl border border-stone-200">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-stone-200 text-stone-400 font-bold uppercase">
-                  <th className="py-3 px-4">Booking Ref</th>
-                  <th className="py-3 px-4">Property</th>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">Dates</th>
-                  <th className="py-3 px-4">Amount</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Pass</th>
+                <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[11px]">
+                  <th className="py-3.5 px-4">Booking Ref</th>
+                  <th className="py-3.5 px-4">Stay & Property</th>
+                  <th className="py-3.5 px-4">Customer</th>
+                  <th className="py-3.5 px-4">Dates</th>
+                  <th className="py-3.5 px-4">Total</th>
+                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 font-medium text-stone-800">
-                {bookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-stone-50">
-                    <td className="py-3.5 px-4 font-mono font-bold text-brand-700">{b.booking_code}</td>
-                    <td className="py-3.5 px-4 font-bold">{b.property?.name}</td>
-                    <td className="py-3.5 px-4">{b.customer?.full_name}</td>
-                    <td className="py-3.5 px-4">{b.check_in} to {b.check_out}</td>
-                    <td className="py-3.5 px-4 font-bold">₹{b.total}</td>
+                {filteredBookings.map((b: any) => (
+                  <tr key={b.id} className="hover:bg-stone-50/80 transition-colors">
+                    <td className="py-3.5 px-4 font-mono font-bold text-brand-700">
+                      #{b.booking_code}
+                    </td>
+                    <td className="py-3.5 px-4 font-bold text-stone-900">
+                      {b.property?.name || `Stay #${b.property_id}`}
+                    </td>
                     <td className="py-3.5 px-4">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                      <span className="font-semibold text-stone-900 block">
+                        {b.customer?.full_name || b.customer_name || `Customer #${b.customer_id}`}
+                      </span>
+                      {b.customer?.email && (
+                        <span className="text-[10px] text-stone-400 block font-mono">
+                          {b.customer.email}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <span>{formatCheckInDate(b.check_in)} → {formatCheckInDate(b.check_out)}</span>
+                        {b.check_in === todayIST && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
+                            Today
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 font-black text-stone-900">
+                      ₹{b.total || b.total_price || b.total_amount || 0}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block border ${getStatusBadge(b.status)}`}>
                         {b.status}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4">
-                      <Link href={`/bookings/${b.booking_code}`} className="text-purple-600 font-bold hover:underline">
-                        QR Pass
-                      </Link>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBookingForDetail(b)}
+                          className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold transition-colors"
+                        >
+                          Inspect
+                        </button>
+                        <Link
+                          href={`/bookings/${b.booking_code}`}
+                          target="_blank"
+                          className="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold transition-colors flex items-center gap-1"
+                        >
+                          <span>Pass</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
+
+                {filteredBookings.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-stone-400">
+                      <Calendar className="w-8 h-8 mx-auto text-stone-300 mb-2" />
+                      <p className="font-bold text-stone-600">No reservations match the filter</p>
+                      <p className="text-[11px] text-stone-400 mt-0.5">
+                        Try resetting your search query or switching the status filter tab.
+                      </p>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1662,6 +2146,113 @@ export default function AdminDashboardPage() {
         onClose={() => setPropertyToDelete(null)}
         onConfirm={handleDeletePropertyConfirm}
       />
+
+      {/* BOOKING DETAIL INSPECTION MODAL */}
+      {selectedBookingForDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full border border-stone-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 pb-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-black text-xs text-brand-700 bg-brand-50 px-2 py-0.5 rounded-lg border border-brand-200">
+                    #{selectedBookingForDetail.booking_code}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${getStatusBadge(selectedBookingForDetail.status)}`}>
+                    {selectedBookingForDetail.status}
+                  </span>
+                  {selectedBookingForDetail.payment_status && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-stone-100 text-stone-600 border border-stone-200">
+                      Payment: {selectedBookingForDetail.payment_status}
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-extrabold text-base text-stone-900">
+                  {selectedBookingForDetail.property?.name || selectedBookingForDetail.property_name || "Stay Reservation"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedBookingForDetail(null)}
+                className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 text-xs">
+              {/* Check-in / Check-out */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 bg-stone-50 rounded-2xl border border-stone-200">
+                <div>
+                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Check-in</span>
+                  <p className="font-bold text-xs text-stone-900 mt-0.5">
+                    📅 {formatCheckInDate(selectedBookingForDetail.check_in)}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Check-out</span>
+                  <p className="font-bold text-xs text-stone-900 mt-0.5">
+                    📅 {formatCheckInDate(selectedBookingForDetail.check_out)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Guest & Total */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-100 space-y-1">
+                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Guest</span>
+                  <p className="font-bold text-stone-900">
+                    {selectedBookingForDetail.customer?.full_name || selectedBookingForDetail.customer_name || "Guest"}
+                  </p>
+                  {selectedBookingForDetail.customer?.email && (
+                    <p className="text-stone-500 font-mono text-[11px] truncate">{selectedBookingForDetail.customer.email}</p>
+                  )}
+                  {selectedBookingForDetail.customer?.phone && (
+                    <p className="text-stone-500 text-[11px]">📞 {selectedBookingForDetail.customer.phone}</p>
+                  )}
+                  {selectedBookingForDetail.guest_count && (
+                    <p className="text-stone-500 text-[11px]">👥 {selectedBookingForDetail.guest_count} Guests</p>
+                  )}
+                </div>
+
+                <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-100 space-y-1 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Total Amount</span>
+                    <p className="font-black text-xl text-stone-900 mt-0.5">
+                      ₹{selectedBookingForDetail.total || selectedBookingForDetail.total_price || selectedBookingForDetail.total_amount || 0}
+                    </p>
+                  </div>
+                  <p className="text-stone-400 text-[10px]">
+                    Created: {formatTimestamp(selectedBookingForDetail.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-stone-100">
+                {selectedBookingForDetail.booking_code && (
+                  <Link
+                    href={`/bookings/${selectedBookingForDetail.booking_code}`}
+                    target="_blank"
+                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <span>View Digital Pass</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedBookingForDetail(null)}
+                  className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
