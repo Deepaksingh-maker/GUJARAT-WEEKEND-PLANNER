@@ -99,7 +99,7 @@ export default function Navbar() {
 
           {/* Right Action Buttons */}
           <div className="hidden md:flex items-center space-x-3">
-            {isHost && (
+            {isHost && !isAdmin && (
               <Link
                 href="/host/dashboard"
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center space-x-1"
@@ -220,7 +220,7 @@ export default function Navbar() {
                         <span>Saved Wishlist</span>
                       </Link>
 
-                      {isHost && (
+                      {isHost && !isAdmin && (
                         <Link
                           href="/host/dashboard"
                           className="flex items-center space-x-2.5 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
@@ -326,7 +326,7 @@ export default function Navbar() {
               >
                 Saved Wishlist
               </Link>
-              {isHost && (
+              {isHost && !isAdmin && (
                 <Link
                   href="/host/dashboard"
                   onClick={() => setMobileMenuOpen(false)}

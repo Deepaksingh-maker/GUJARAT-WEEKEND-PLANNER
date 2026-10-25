@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         refreshUser,
         isAuthenticated: !!user,
-        isHost: user?.role === "HOST" || user?.role === "ADMIN",
+        isHost: user?.role === "HOST",
         isAdmin: user?.role === "ADMIN",
       }}
     >
