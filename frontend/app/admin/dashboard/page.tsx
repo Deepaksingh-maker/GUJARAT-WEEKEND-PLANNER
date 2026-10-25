@@ -637,17 +637,26 @@ export default function AdminDashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-stone-200 gap-4">
-        <div>
-          <div className="flex items-center space-x-2 text-xs font-bold text-purple-700 uppercase tracking-widest mb-1">
-            <ShieldCheck className="w-4 h-4 text-purple-600" />
-            <span>Master Administration Hub</span>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="hidden sm:inline-block flex-shrink-0">
+            <img
+              src="/logo.png"
+              alt="Gujarat Weekend Planner"
+              className="h-12 w-auto object-contain hover:scale-105 transition-transform"
+            />
+          </Link>
+          <div>
+            <div className="flex items-center space-x-2 text-xs font-bold text-purple-700 uppercase tracking-widest mb-1">
+              <ShieldCheck className="w-4 h-4 text-purple-600" />
+              <span>Master Administration Hub</span>
+            </div>
+            <h1 className="text-3xl font-black text-stone-900 tracking-tight">
+              Gujarat Weekend Control Center
+            </h1>
+            <p className="text-xs text-stone-500 mt-1">
+              Real-time control over hosts, properties, bookings, revenue, and platform moderation.
+            </p>
           </div>
-          <h1 className="text-3xl font-black text-stone-900 tracking-tight">
-            Gujarat Weekend Control Center
-          </h1>
-          <p className="text-xs text-stone-500 mt-1">
-            Real-time control over hosts, properties, bookings, revenue, and platform moderation.
-          </p>
         </div>
       </div>
 

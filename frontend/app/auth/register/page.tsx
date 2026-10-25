@@ -47,9 +47,13 @@ export default function RegisterPage() {
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-stone-200/80 shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-amber-500 mx-auto flex items-center justify-center text-white shadow-lg shadow-brand-500/25">
-            <Compass className="w-6 h-6" />
-          </div>
+          <Link href="/" className="inline-block mb-1">
+            <img
+              src="/logo.png"
+              alt="Gujarat Weekend Planner"
+              className="h-16 w-auto mx-auto object-contain hover:scale-105 transition-transform"
+            />
+          </Link>
           <h1 className="text-2xl font-black text-stone-900">Create Traveler Account</h1>
           <p className="text-xs text-stone-500">Discover and book verified Gujarat weekend stays</p>
         </div>

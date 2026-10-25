@@ -605,16 +605,25 @@ export default function HostDashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-stone-200 gap-4">
-        <div>
-          <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest block mb-1">
-            Host Operations Portal
-          </span>
-          <h1 className="text-3xl font-black text-stone-900 tracking-tight">
-            {stats?.host_profile?.business_name || "Gujarat Host Dashboard"}
-          </h1>
-          <p className="text-xs text-stone-500 mt-1">
-            Status: <span className="font-bold text-emerald-700 capitalize">{stats?.host_profile?.verification_status || "Verified"}</span> • Managing stays across Gujarat
-          </p>
+        <div className="flex items-center gap-4">
+          <Link href="/" className="hidden sm:inline-block flex-shrink-0">
+            <img
+              src="/logo.png"
+              alt="Gujarat Weekend Planner"
+              className="h-12 w-auto object-contain hover:scale-105 transition-transform"
+            />
+          </Link>
+          <div>
+            <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest block mb-1">
+              Host Operations Portal
+            </span>
+            <h1 className="text-3xl font-black text-stone-900 tracking-tight">
+              {stats?.host_profile?.business_name || "Gujarat Host Dashboard"}
+            </h1>
+            <p className="text-xs text-stone-500 mt-1">
+              Status: <span className="font-bold text-emerald-700 capitalize">{stats?.host_profile?.verification_status || "Verified"}</span> • Managing stays across Gujarat
+            </p>
+          </div>
         </div>
 
         <button

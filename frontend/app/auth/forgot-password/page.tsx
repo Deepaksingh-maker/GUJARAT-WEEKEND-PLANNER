@@ -110,11 +110,18 @@ export default function ForgotPasswordPage() {
         
         {/* Header Icon & Title */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-amber-500 mx-auto flex items-center justify-center text-white shadow-lg shadow-brand-500/25">
+          <Link href="/" className="inline-block mb-1">
+            <img
+              src="/logo.png"
+              alt="Gujarat Weekend Planner"
+              className="h-14 w-auto mx-auto object-contain hover:scale-105 transition-transform"
+            />
+          </Link>
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-amber-500 mx-auto flex items-center justify-center text-white shadow-md shadow-brand-500/25">
             {step === "SUCCESS" ? (
-              <CheckCircle2 className="w-6 h-6 text-white" />
+              <CheckCircle2 className="w-5 h-5 text-white" />
             ) : (
-              <KeyRound className="w-6 h-6 text-white" />
+              <KeyRound className="w-5 h-5 text-white" />
             )}
           </div>
           <h1 className="text-2xl font-black text-stone-900">

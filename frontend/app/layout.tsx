@@ -13,9 +13,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Gujarat Weekend | Verified Stays, Private Villas, Resorts & Escapes",
+  title: "Gujarat Weekend Planner | Verified Stays, Private Villas, Resorts & Escapes",
   description:
     "Discover and book verified private pool villas, orchard farmhouses, riverside resorts, desert glamping, and curated outdoor activities across Gujarat.",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
   keywords: [
     "Gujarat weekend booking",
     "Saputara villa",

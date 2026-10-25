@@ -19,13 +19,12 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-stone-800">
           {/* Brand Intro */}
           <div className="lg:col-span-2 space-y-4">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-amber-500 flex items-center justify-center text-white">
-                <Compass className="w-5 h-5" />
-              </div>
-              <span className="font-extrabold text-2xl tracking-tight text-white">
-                Gujarat<span className="text-brand-500">Weekend</span>
-              </span>
+            <Link href="/" className="inline-block p-2 bg-white rounded-2xl shadow-md group hover:opacity-95 transition-all">
+              <img
+                src="/logo.png"
+                alt="Gujarat Weekend Planner"
+                className="h-12 w-auto object-contain group-hover:scale-105 transition-transform"
+              />
             </Link>
             <p className="text-sm text-stone-400 max-w-sm leading-relaxed">
               Gujarat’s premier verified weekend stays, private pool villas, heritage retreats, and nature experiences marketplace. Handcrafted for unforgettable 2-day escapes.
