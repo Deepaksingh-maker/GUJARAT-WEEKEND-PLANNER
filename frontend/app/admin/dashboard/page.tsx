@@ -120,9 +120,9 @@ export default function AdminDashboardPage() {
     }
   }, [isAuthenticated, authLoading]);
 
-  const loadAdminData = async () => {
+  const loadAdminData = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) setLoading(true);
       const [statsRes, hostsRes, propsRes, bookingsRes, couponsRes, revsRes, analyticsRes, contactLogsRes, locsRes, insightsRes] = await Promise.all([
         api.admin.getDashboard(),
         api.admin.getHosts(),
@@ -154,7 +154,7 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error("Admin dashboard error:", err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
@@ -187,88 +187,162 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // --- Instant Optimistic Action Handlers (Zero Lag / Immediate UI Updates) ---
   const handleApproveHost = async (hostId: number) => {
+    const previousHosts = [...hosts];
+    // 1. Optimistic Update (0ms)
+    setHosts((prev) =>
+      prev.map((h) => (h.id === hostId ? { ...h, verification_status: "verified" } : h))
+    );
     try {
       await api.admin.approveHost(hostId, "Approved by Administrator");
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
-      alert(err.message);
+      setHosts(previousHosts);
+      alert(err.message || "Failed to approve host");
     }
   };
 
   const handleRejectHost = async (hostId: number) => {
+    const previousHosts = [...hosts];
+    // 1. Optimistic Update (0ms)
+    setHosts((prev) =>
+      prev.map((h) => (h.id === hostId ? { ...h, verification_status: "rejected" } : h))
+    );
     try {
       await api.admin.rejectHost(hostId, "Verification document incomplete");
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
-      alert(err.message);
+      setHosts(previousHosts);
+      alert(err.message || "Failed to reject host");
     }
   };
 
   const handleApproveProperty = async (propId: number) => {
+    const previousProperties = [...properties];
+    // 1. Optimistic Update (0ms)
+    setProperties((prev) =>
+      prev.map((p) => (p.id === propId ? { ...p, verification_status: "approved", booking_enabled: true } : p))
+    );
     try {
       await api.admin.approveProperty(propId, "Approved by Administrator");
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
+      setProperties(previousProperties);
       alert(err.message || "Failed to approve property");
     }
   };
 
   const handleRejectProperty = async (propId: number) => {
+    const previousProperties = [...properties];
+    // 1. Optimistic Update (0ms)
+    setProperties((prev) =>
+      prev.map((p) => (p.id === propId ? { ...p, verification_status: "rejected", booking_enabled: false } : p))
+    );
     try {
       await api.admin.rejectProperty(propId, "Suspended by Administrator");
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
+      setProperties(previousProperties);
       alert(err.message || "Failed to suspend property");
     }
   };
 
   const handlePausePropertyConfirm = async (notes: string) => {
     if (!pauseBlockTarget?.prop) return;
+    const targetId = pauseBlockTarget.prop.id;
+    const previousProperties = [...properties];
+
+    // 1. Instantly close modal & update status (0ms)
+    setPauseBlockTarget(null);
+    setProperties((prev) =>
+      prev.map((p) => (p.id === targetId ? { ...p, verification_status: "paused", booking_enabled: false } : p))
+    );
+
     try {
-      await api.admin.pauseProperty(pauseBlockTarget.prop.id, notes || "Paused by Administrator");
-      loadAdminData();
+      await api.admin.pauseProperty(targetId, notes || "Paused by Administrator");
+      loadAdminData(true);
     } catch (err: any) {
+      setProperties(previousProperties);
       alert(err.message || "Failed to pause property");
     }
   };
 
   const handleBlockPropertyConfirm = async (notes: string) => {
     if (!pauseBlockTarget?.prop) return;
+    const targetId = pauseBlockTarget.prop.id;
+    const previousProperties = [...properties];
+
+    // 1. Instantly close modal & update status (0ms)
+    setPauseBlockTarget(null);
+    setProperties((prev) =>
+      prev.map((p) => (p.id === targetId ? { ...p, verification_status: "blocked", booking_enabled: false } : p))
+    );
+
     try {
-      await api.admin.blockProperty(pauseBlockTarget.prop.id, notes || "Blocked by Administrator");
-      loadAdminData();
+      await api.admin.blockProperty(targetId, notes || "Blocked by Administrator");
+      loadAdminData(true);
     } catch (err: any) {
+      setProperties(previousProperties);
       alert(err.message || "Failed to block property");
     }
   };
 
   const handleResumeProperty = async (propId: number) => {
+    const previousProperties = [...properties];
+    // 1. Optimistic Update (0ms)
+    setProperties((prev) =>
+      prev.map((p) => (p.id === propId ? { ...p, verification_status: "approved", booking_enabled: true } : p))
+    );
     try {
       await api.admin.resumeProperty(propId);
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
+      setProperties(previousProperties);
       alert(err.message || "Failed to activate property");
     }
   };
 
   const handleDeletePropertyConfirm = async () => {
     if (!propertyToDelete) return;
+    const targetId = propertyToDelete.id;
+    const previousProperties = [...properties];
+
+    // 1. Instantly close modals and remove from view (0ms)
+    setPropertyToDelete(null);
+    if (selectedPropertyForView?.id === targetId) setSelectedPropertyForView(null);
+    setProperties((prev) => prev.filter((p) => p.id !== targetId));
+
     try {
-      await api.admin.deleteProperty(propertyToDelete.id);
-      loadAdminData();
+      await api.admin.deleteProperty(targetId);
+      loadAdminData(true);
     } catch (err: any) {
+      setProperties(previousProperties);
       alert(err.message || "Failed to delete property");
     }
   };
 
   const handleSaveEditProperty = async (updatedData: any) => {
     if (!selectedPropertyForEdit) return;
-    const res = await api.properties.update(selectedPropertyForEdit.id, updatedData);
-    if (res.success) {
-      loadAdminData();
-    } else {
-      throw new Error(res.message || "Failed to update property");
+    const targetId = selectedPropertyForEdit.id;
+    const previousProperties = [...properties];
+
+    // 1. Optimistically update in state and close modal (0ms)
+    setProperties((prev) =>
+      prev.map((p) => (p.id === targetId ? { ...p, ...updatedData } : p))
+    );
+    setSelectedPropertyForEdit(null);
+
+    try {
+      const res = await api.properties.update(targetId, updatedData);
+      if (res.success) {
+        loadAdminData(true);
+      } else {
+        throw new Error(res.message || "Failed to update property");
+      }
+    } catch (err: any) {
+      setProperties(previousProperties);
+      alert(err.message || "Failed to update property");
     }
   };
 
@@ -293,7 +367,7 @@ export default function AdminDashboardPage() {
       });
 
       setNewCouponCode("");
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
       alert(err.message || "Failed to create coupon");
     } finally {
@@ -302,10 +376,16 @@ export default function AdminDashboardPage() {
   };
 
   const handleToggleReview = async (revId: number) => {
+    const previousReviews = [...reviews];
+    // 1. Optimistic update (0ms)
+    setReviews((prev) =>
+      prev.map((r) => (r.id === revId ? { ...r, is_approved: !r.is_approved } : r))
+    );
     try {
       await api.admin.toggleReviewApproval(revId);
-      loadAdminData();
+      loadAdminData(true);
     } catch (err: any) {
+      setReviews(previousReviews);
       alert(err.message);
     }
   };

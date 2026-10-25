@@ -283,6 +283,9 @@ def test_property_image_url_creation_and_cover_selection():
     assert covers[0]["image_url"] == "https://images.unsplash.com/photo-1564013799919-ab600027ffc6"
     assert covers[0]["sort_order"] == 1
 
+    # Cleanup test property so it does not pollute database
+    client.delete(f"/api/properties/{prop_id}", headers=headers)
+
 def test_property_image_crud_and_reordering():
     # 1. Login as Host
     host_login = client.post("/api/auth/login", json={
