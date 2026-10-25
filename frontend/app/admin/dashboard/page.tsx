@@ -54,6 +54,7 @@ import {
   AdminAddPropertyModal
 } from "@/components/admin/AdminPropertyModals";
 import { AddCelebrationModal } from "@/components/animations/AddCelebrationAnimation";
+import { AnimatedCounter } from "@/components/animations/AnimatedCounter";
 import { 
   StatMetricCard, 
   RevenueAreaChart, 
@@ -656,22 +657,27 @@ export default function AdminDashboardPage() {
           { key: "overview", label: "Overview Metrics" },
           { key: "analytics", label: "📊 Revenue & Analytics" },
           { key: "contact_protection", label: "🛡️ Contact Protection" },
-          { key: "hosts", label: `Hosts (${hosts.length})` },
-          { key: "properties", label: `Properties (${properties.length})` },
-          { key: "bookings", label: `Bookings (${bookings.length})` },
-          { key: "coupons", label: `Coupons (${coupons.length})` },
-          { key: "reviews", label: `Reviews (${reviews.length})` },
+          { key: "hosts", label: "Hosts", count: hosts.length },
+          { key: "properties", label: "Properties", count: properties.length },
+          { key: "bookings", label: "Bookings", count: bookings.length },
+          { key: "coupons", label: "Coupons", count: coupons.length },
+          { key: "reviews", label: "Reviews", count: reviews.length },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as any)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === tab.key
                 ? "bg-purple-900 text-white shadow-sm"
                 : "text-stone-600 hover:text-stone-900 hover:bg-stone-100"
             }`}
           >
-            {tab.label}
+            <span>{tab.label}</span>
+            {tab.count !== undefined && (
+              <span className="opacity-90">
+                (<AnimatedCounter value={tab.count} duration={800} />)
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -682,34 +688,50 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-[11px] font-bold text-stone-400 uppercase">Gross Revenue</span>
-              <p className="text-xl font-black text-emerald-600">₹{(stats?.total_revenue || 0).toLocaleString("en-IN")}</p>
+              <p className="text-xl font-black text-emerald-600">
+                <AnimatedCounter value={stats?.total_revenue || 0} prefix="₹" formatAsCurrency decimals={2} />
+              </p>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-[11px] font-bold text-stone-400 uppercase">Total Bookings</span>
-              <p className="text-xl font-black text-stone-900">{stats?.total_bookings || 0}</p>
+              <p className="text-xl font-black text-stone-900">
+                <AnimatedCounter value={stats?.total_bookings || bookings.length || 0} />
+              </p>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-[11px] font-bold text-stone-400 uppercase">Properties</span>
-              <p className="text-xl font-black text-stone-900">{stats?.total_properties || 0}</p>
+              <p className="text-xl font-black text-stone-900">
+                <AnimatedCounter value={stats?.total_properties || properties.length || 0} />
+              </p>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-[11px] font-bold text-stone-400 uppercase">Verified Hosts</span>
-              <p className="text-xl font-black text-stone-900">{stats?.total_hosts || 0}</p>
+              <p className="text-xl font-black text-stone-900">
+                <AnimatedCounter value={stats?.total_hosts || hosts.length || 0} />
+              </p>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-[11px] font-bold text-stone-400 uppercase">Live Stays</span>
               <p className="text-xl font-black text-emerald-600">
-                {properties.filter((p) => (p.verification_status || "").toLowerCase() === "approved").length || stats?.total_properties || 0}
+                <AnimatedCounter
+                  value={
+                    properties.filter((p) => (p.verification_status || "").toLowerCase() === "approved").length ||
+                    stats?.total_properties ||
+                    0
+                  }
+                />
               </p>
             </div>
 
             <div className="p-5 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-[11px] font-bold text-stone-400 uppercase">Travelers</span>
-              <p className="text-xl font-black text-purple-600">{stats?.total_customers || 0}</p>
+              <p className="text-xl font-black text-purple-600">
+                <AnimatedCounter value={stats?.total_customers || 0} />
+              </p>
             </div>
           </div>
 
@@ -751,7 +773,7 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
                   <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-100">
-                    {bookings.length} Total
+                    <AnimatedCounter value={bookings.length} suffix=" Total" />
                   </span>
                 </div>
 
@@ -775,7 +797,9 @@ export default function AdminDashboardPage() {
                       </div>
 
                       <div className="text-right flex-shrink-0 space-y-1">
-                        <span className="font-black text-stone-900 block">₹{b.total_price || b.total_amount || 0}</span>
+                        <span className="font-black text-stone-900 block">
+                          <AnimatedCounter value={b.total || b.total_price || b.total_amount || 0} prefix="₹" />
+                        </span>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase inline-block ${
                             b.status === "confirmed" || b.status === "completed"
@@ -806,7 +830,7 @@ export default function AdminDashboardPage() {
                   onClick={() => setActiveTab("bookings")}
                   className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <span>View All Platform Reservations ({bookings.length})</span>
+                  <span>View All Platform Reservations (<AnimatedCounter value={bookings.length} />)</span>
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -854,7 +878,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="my-1">
                       <span className="text-xl font-black text-amber-950 block">
-                        {pendingBookingsCount}
+                        <AnimatedCounter value={pendingBookingsCount} />
                       </span>
                       <span className="text-[9px] text-amber-700 font-semibold block leading-tight">
                         Requires action
@@ -879,7 +903,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="my-1">
                       <span className="text-xl font-black text-purple-950 block">
-                        {upcomingCheckinsCount}
+                        <AnimatedCounter value={upcomingCheckinsCount} />
                       </span>
                       <span className="text-[9px] text-purple-700 font-semibold block leading-tight">
                         Confirmed future
@@ -904,7 +928,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="my-1">
                       <span className="text-xl font-black text-emerald-950 block">
-                        {todayCheckinsCount}
+                        <AnimatedCounter value={todayCheckinsCount} />
                       </span>
                       <span className="text-[9px] text-emerald-700 font-semibold block leading-tight">
                         Arriving today
@@ -929,7 +953,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="my-1">
                       <span className="text-xl font-black text-rose-950 block">
-                        {availabilityIssuesCount}
+                        <AnimatedCounter value={availabilityIssuesCount} />
                       </span>
                       <span className="text-[9px] text-rose-700 font-semibold block leading-tight">
                         Paused / Blocked
@@ -1467,10 +1491,10 @@ export default function AdminDashboardPage() {
             </div>
             <div className="flex items-center space-x-2 text-xs">
               <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold">
-                {hosts.filter((h) => h.verification_status === "verified").length} Verified
+                <AnimatedCounter value={hosts.filter((h) => h.verification_status === "verified").length} /> Verified
               </span>
               <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold">
-                {hosts.filter((h) => h.verification_status === "pending").length} Pending
+                <AnimatedCounter value={hosts.filter((h) => h.verification_status === "pending").length} /> Pending
               </span>
             </div>
           </div>
@@ -1514,7 +1538,7 @@ export default function AdminDashboardPage() {
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 font-bold text-[11px]">
-                        {h.properties_count || 0} stays
+                        <AnimatedCounter value={h.properties_count || 0} suffix=" stays" />
                       </span>
                     </td>
                     <td className="py-3.5 px-4">
@@ -1608,24 +1632,24 @@ export default function AdminDashboardPage() {
               {/* Status Counters */}
               <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
                 <span className="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-800 border border-stone-200">
-                  Total: {properties.length}
+                  Total: <AnimatedCounter value={properties.length} />
                 </span>
                 <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  Live: {approvedCount}
+                  Live: <AnimatedCounter value={approvedCount} />
                 </span>
                 <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  Paused: {pausedCount}
+                  Paused: <AnimatedCounter value={pausedCount} />
                 </span>
                 <span className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-rose-500" />
-                  Blocked: {blockedCount}
+                  Blocked: <AnimatedCounter value={blockedCount} />
                 </span>
                 {pendingCount > 0 && (
                   <span className="px-3 py-1.5 rounded-xl bg-yellow-50 text-yellow-800 border border-yellow-200 flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                    Pending: {pendingCount}
+                    Pending: <AnimatedCounter value={pendingCount} />
                   </span>
                 )}
                 <button
@@ -1663,7 +1687,7 @@ export default function AdminDashboardPage() {
                       : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
                   }`}
                 >
-                  All ({properties.length})
+                  All (<AnimatedCounter value={properties.length} />)
                 </button>
                 <button
                   type="button"
@@ -1674,7 +1698,7 @@ export default function AdminDashboardPage() {
                       : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
                   }`}
                 >
-                  Live ({approvedCount})
+                  Live (<AnimatedCounter value={approvedCount} />)
                 </button>
                 <button
                   type="button"
@@ -1685,7 +1709,7 @@ export default function AdminDashboardPage() {
                       : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
                   }`}
                 >
-                  Paused ({pausedCount})
+                  Paused (<AnimatedCounter value={pausedCount} />)
                 </button>
                 <button
                   type="button"
@@ -1696,7 +1720,7 @@ export default function AdminDashboardPage() {
                       : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
                   }`}
                 >
-                  Blocked ({blockedCount})
+                  Blocked (<AnimatedCounter value={blockedCount} />)
                 </button>
                 <button
                   type="button"
@@ -1707,7 +1731,7 @@ export default function AdminDashboardPage() {
                       : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
                   }`}
                 >
-                  ⚠️ Issues ({availabilityIssuesCount})
+                  ⚠️ Issues (<AnimatedCounter value={availabilityIssuesCount} />)
                 </button>
                 {pendingCount > 0 && (
                   <button
@@ -1719,7 +1743,7 @@ export default function AdminDashboardPage() {
                         : "bg-white text-stone-600 hover:bg-stone-100 border border-stone-200"
                     }`}
                   >
-                    Pending ({pendingCount})
+                    Pending (<AnimatedCounter value={pendingCount} />)
                   </button>
                 )}
               </div>
@@ -1819,7 +1843,9 @@ export default function AdminDashboardPage() {
 
                         {/* Price */}
                         <td className="py-3.5 px-4">
-                          <span className="font-black text-stone-900 text-sm">₹{p.price_per_night}</span>
+                          <span className="font-black text-stone-900 text-sm">
+                            <AnimatedCounter value={p.price_per_night} prefix="₹" />
+                          </span>
                           <span className="text-[10px] text-stone-400 block">/ night</span>
                         </td>
 

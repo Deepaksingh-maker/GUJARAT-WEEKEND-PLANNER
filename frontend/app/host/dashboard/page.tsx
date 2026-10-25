@@ -50,6 +50,7 @@ import {
   formatRupee 
 } from "@/components/analytics/AnalyticsCharts";
 import { AddCelebrationModal } from "@/components/animations/AddCelebrationAnimation";
+import { AnimatedCounter } from "@/components/animations/AnimatedCounter";
 
 interface PropertyImageItem {
   id?: number;
@@ -678,7 +679,7 @@ export default function HostDashboardPage() {
               : "text-stone-500 hover:text-stone-800"
           }`}
         >
-          Customer Bookings ({bookings.length})
+          Customer Bookings (<AnimatedCounter value={bookings.length} />)
         </button>
         <button
           onClick={() => setActiveTab("messages")}
@@ -688,7 +689,7 @@ export default function HostDashboardPage() {
               : "text-stone-500 hover:text-stone-800"
           }`}
         >
-          <span>💬 Guest Inquiries ({conversations.length})</span>
+          <span>💬 Guest Inquiries (<AnimatedCounter value={conversations.length} />)</span>
           {conversations.some((c: any) => c.unread_count > 0) && (
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
           )}
@@ -724,29 +725,46 @@ export default function HostDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-xs font-bold text-stone-400 uppercase">Gross Revenue</span>
-              <p className="text-2xl font-black text-stone-900">₹{(stats?.total_revenue ?? stats?.revenue ?? stats?.gross_revenue ?? 0).toLocaleString("en-IN")}</p>
+              <p className="text-2xl font-black text-stone-900">
+                <AnimatedCounter
+                  value={stats?.total_revenue ?? stats?.revenue ?? stats?.gross_revenue ?? 0}
+                  prefix="₹"
+                  formatAsCurrency
+                  decimals={2}
+                />
+              </p>
               <span className="text-[10px] text-emerald-600 font-bold">100% Verified Payouts</span>
             </div>
 
             <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-xs font-bold text-stone-400 uppercase">Completed Stays</span>
-              <p className="text-2xl font-black text-stone-900">{stats?.total_bookings || 0}</p>
+              <p className="text-2xl font-black text-stone-900">
+                <AnimatedCounter value={stats?.total_bookings || 0} />
+              </p>
               <span className="text-[10px] text-stone-500 font-semibold">Across Gujarat Properties</span>
             </div>
 
             <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-xs font-bold text-stone-400 uppercase">Active Properties</span>
-              <p className="text-2xl font-black text-stone-900">{stats?.active_properties || 0}</p>
-              <span className="text-[10px] text-stone-500 font-semibold">{stats?.total_properties || 0} Total</span>
+              <p className="text-2xl font-black text-stone-900">
+                <AnimatedCounter value={stats?.active_properties || 0} />
+              </p>
+              <span className="text-[10px] text-stone-500 font-semibold">
+                <AnimatedCounter value={stats?.total_properties || 0} /> Total
+              </span>
             </div>
 
             <div className="p-6 bg-white rounded-3xl border border-stone-200 shadow-sm space-y-1">
               <span className="text-xs font-bold text-stone-400 uppercase">Guest Rating</span>
               <div className="flex items-center space-x-1">
                 <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                <span className="text-2xl font-black text-stone-900">{stats?.average_rating || 5.0}</span>
+                <span className="text-2xl font-black text-stone-900">
+                  <AnimatedCounter value={stats?.average_rating || 5.0} decimals={1} />
+                </span>
               </div>
-              <span className="text-[10px] text-stone-500 font-semibold">{stats?.reviews_count || 0} Reviews</span>
+              <span className="text-[10px] text-stone-500 font-semibold">
+                <AnimatedCounter value={stats?.reviews_count || 0} suffix=" Reviews" />
+              </span>
             </div>
           </div>
 

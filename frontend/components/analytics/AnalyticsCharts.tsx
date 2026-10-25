@@ -15,6 +15,7 @@ import {
   Sparkles,
   Info
 } from "lucide-react";
+import { AnimatedCounter } from "@/components/animations/AnimatedCounter";
 
 // Format currency helper
 export const formatRupee = (amount: number = 0): string => {
@@ -73,7 +74,7 @@ export function StatMetricCard({
             {title}
           </p>
           <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
-            {value}
+            <AnimatedCounter value={value} />
           </h3>
           {subtitle && (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
