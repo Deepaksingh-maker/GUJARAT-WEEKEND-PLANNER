@@ -49,6 +49,7 @@ import {
   WeekendSurgeCard, 
   formatRupee 
 } from "@/components/analytics/AnalyticsCharts";
+import { AddCelebrationModal } from "@/components/animations/AddCelebrationAnimation";
 
 interface PropertyImageItem {
   id?: number;
@@ -132,6 +133,7 @@ export default function HostDashboardPage() {
 
   const [submittingProperty, setSubmittingProperty] = useState(false);
   const [propertySubmitSuccess, setPropertySubmitSuccess] = useState(false);
+  const [celebrationData, setCelebrationData] = useState<any>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -550,23 +552,37 @@ export default function HostDashboardPage() {
         const res = await api.properties.update(editingPropertyId, payload);
         if (res.success) {
           setPropertySubmitSuccess(true);
+          setCelebrationData({
+            name: propName,
+            property_type: propType,
+            location_name: selectedLocationObj?.name || "Gujarat",
+            price_per_night: Number(propPrice),
+            image_url: preparedImages?.[0]?.image_url,
+          });
           loadHostData();
           setTimeout(() => {
             setActiveTab("properties");
             setEditingPropertyId(null);
             setPropertySubmitSuccess(false);
-          }, 1500);
+          }, 2000);
         }
       } else {
         const res = await api.properties.create(payload);
         if (res.success) {
           setPropertySubmitSuccess(true);
+          setCelebrationData({
+            name: propName,
+            property_type: propType,
+            location_name: selectedLocationObj?.name || "Gujarat",
+            price_per_night: Number(propPrice),
+            image_url: preparedImages?.[0]?.image_url,
+          });
           loadHostData();
           setTimeout(() => {
             setActiveTab("properties");
             handleResetPropertyForm();
             setPropertySubmitSuccess(false);
-          }, 1500);
+          }, 2000);
         }
       }
     } catch (err: any) {
@@ -2159,6 +2175,15 @@ export default function HostDashboardPage() {
           bookingId={chatTarget.bookingId}
         />
       )}
+
+      {/* Add / Edit Property Celebration Modal */}
+      <AddCelebrationModal
+        isOpen={!!celebrationData}
+        property={celebrationData}
+        title={editingPropertyId ? "Property Updated Successfully!" : "New Stay Listed Successfully!"}
+        subtitle="Your property listing is saved with high-resolution imagery and live availability."
+        onClose={() => setCelebrationData(null)}
+      />
     </div>
   );
 }

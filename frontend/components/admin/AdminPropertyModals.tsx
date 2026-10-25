@@ -26,8 +26,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  Info
+  Info,
+  Plus,
+  Image as ImageIcon
 } from "lucide-react";
+import { TrashBucketDeleteModal } from "@/components/animations/TrashBucketAnimation";
 
 // ==========================================
 // 1. PROPERTY VIEW MODAL
@@ -809,7 +812,7 @@ interface PropertyDeleteModalProps {
   isOpen: boolean;
   property: any;
   onClose: () => void;
-  onConfirm: () => Promise<void>;
+  onConfirm: () => Promise<void> | void;
 }
 
 export const PropertyDeleteModal: React.FC<PropertyDeleteModalProps> = ({
@@ -818,60 +821,244 @@ export const PropertyDeleteModal: React.FC<PropertyDeleteModalProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const [loading, setLoading] = useState(false);
+  return (
+    <TrashBucketDeleteModal
+      isOpen={isOpen}
+      property={property}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
+};
 
-  if (!isOpen || !property) return null;
+// ==========================================
+// 5. ADMIN ADD PROPERTY MODAL
+// ==========================================
+interface AdminAddPropertyModalProps {
+  isOpen: boolean;
+  locations: any[];
+  onClose: () => void;
+  onSubmit: (data: any) => Promise<void>;
+}
 
-  const handleConfirm = async () => {
+export const AdminAddPropertyModal: React.FC<AdminAddPropertyModalProps> = ({
+  isOpen,
+  locations,
+  onClose,
+  onSubmit,
+}) => {
+  const [name, setName] = useState("");
+  const [locationId, setLocationId] = useState<string>("");
+  const [propertyType, setPropertyType] = useState("villa");
+  const [pricePerNight, setPricePerNight] = useState(6500);
+  const [maxGuests, setMaxGuests] = useState(6);
+  const [bedrooms, setBedrooms] = useState(3);
+  const [bathrooms, setBathrooms] = useState(3);
+  const [imageUrl, setImageUrl] = useState("https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (locations && locations.length > 0 && !locationId) {
+      setLocationId(locations[0].id.toString());
+    }
+  }, [locations, locationId]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError("Please enter a property name");
+      return;
+    }
+    if (!locationId) {
+      setError("Please select a Gujarat destination");
+      return;
+    }
+
     try {
-      setLoading(true);
-      await onConfirm();
+      setSubmitting(true);
+      setError(null);
+      await onSubmit({
+        name: name.trim(),
+        description: description || `Experience pure comfort and serenity in ${propertyType} setting in Gujarat.`,
+        property_type: propertyType,
+        location_id: Number(locationId),
+        price_per_night: Number(pricePerNight),
+        max_guests: Number(maxGuests),
+        bedrooms: Number(bedrooms),
+        bathrooms: Number(bathrooms),
+        address: "Gujarat, India",
+        house_rules: "Valid photo ID required at check-in. Standard checkout guidelines apply.",
+        images: [
+          {
+            image_url: imageUrl || "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80",
+            caption: "Primary View",
+            is_cover: true,
+            is_primary: true,
+            sort_order: 0
+          }
+        ]
+      });
       onClose();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setError(err.message || "Failed to add property");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-200 animate-in fade-in zoom-in-95 space-y-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-3 bg-rose-100 text-rose-700 rounded-2xl">
-            <Trash2 className="w-6 h-6" />
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-200 space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-2xl">
+              <Plus className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-black text-lg text-stone-900 leading-tight">Add New Gujarat Stay</h3>
+              <p className="text-[11px] font-semibold text-emerald-700">Quick property publisher</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-black text-lg text-stone-900">Permanently Delete Property?</h3>
-            <p className="text-xs text-rose-600 font-semibold">This action cannot be undone.</p>
-          </div>
-        </div>
-
-        <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-100 text-xs text-stone-800 space-y-1">
-          <p className="font-extrabold text-stone-900">{property.name}</p>
-          <p className="text-stone-500">Destination: {property.location?.name || "Gujarat"}</p>
-          <p className="text-[11px] text-stone-400">All photos, availability rules, and associated cached data will be removed.</p>
-        </div>
-
-        <div className="flex items-center justify-end space-x-2.5 pt-2">
           <button
-            type="button"
             onClick={onClose}
-            disabled={loading}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100"
+            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
           >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={loading}
-            className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
-          >
-            {loading && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            <span>Delete Permanently</span>
+            <X className="w-4 h-4" />
           </button>
         </div>
+
+        {error && (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-bold text-rose-700 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs font-bold text-stone-700">
+          <div>
+            <label className="block text-stone-600 mb-1">Stay Name / Property Title *</label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Sasan Gir Serene Eco Luxury Villa"
+              className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-stone-600 mb-1">Destination Location *</label>
+              <select
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50 focus:bg-white outline-none"
+                required
+              >
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-stone-600 mb-1">Property Type</label>
+              <select
+                value={propertyType}
+                onChange={(e) => setPropertyType(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50 focus:bg-white outline-none capitalize"
+              >
+                {["villa", "resort", "heritage", "cottage", "homestay", "tent", "hotel"].map((t) => (
+                  <option key={t} value={t}>
+                    {t.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-stone-600 mb-1">Price / Night (₹)</label>
+              <input
+                type="number"
+                min={500}
+                step={100}
+                value={pricePerNight}
+                onChange={(e) => setPricePerNight(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-stone-600 mb-1">Max Guests</label>
+              <input
+                type="number"
+                min={1}
+                value={maxGuests}
+                onChange={(e) => setMaxGuests(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-stone-600 mb-1">Bedrooms</label>
+              <input
+                type="number"
+                min={1}
+                value={bedrooms}
+                onChange={(e) => setBedrooms(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-stone-600 mb-1">Photo / Image URL</label>
+            <input
+              type="url"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://images.unsplash.com/..."
+              className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50 focus:bg-white outline-none text-xs"
+            />
+          </div>
+
+          <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-stone-100">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              {submitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Adding Stay...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Publish & Add Stay</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

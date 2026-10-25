@@ -50,8 +50,10 @@ import {
   PropertyViewModal,
   PropertyEditModal,
   PauseBlockModal,
-  PropertyDeleteModal
+  PropertyDeleteModal,
+  AdminAddPropertyModal
 } from "@/components/admin/AdminPropertyModals";
+import { AddCelebrationModal } from "@/components/animations/AddCelebrationAnimation";
 import { 
   StatMetricCard, 
   RevenueAreaChart, 
@@ -102,6 +104,17 @@ export default function AdminDashboardPage() {
   const [pauseBlockTarget, setPauseBlockTarget] = useState<{ prop: any; action: "pause" | "block"; notes: string } | null>(null);
   const [propertySearch, setPropertySearch] = useState("");
   const [propertyStatusFilter, setPropertyStatusFilter] = useState<string>("all");
+
+  // Add Property & Celebration Animation State
+  const [isAddPropertyModalOpen, setIsAddPropertyModalOpen] = useState(false);
+  const [celebrationData, setCelebrationData] = useState<{
+    name: string;
+    property_type?: string;
+    location_name?: string;
+    price_per_night?: number;
+    image_url?: string;
+  } | null>(null);
+  const [justAddedPropertyId, setJustAddedPropertyId] = useState<number | null>(null);
 
   // Booking & Availability Insights State
   const [bookingInsights, setBookingInsights] = useState<any | null>(null);
@@ -308,8 +321,7 @@ export default function AdminDashboardPage() {
     const targetId = propertyToDelete.id;
     const previousProperties = [...properties];
 
-    // 1. Instantly close modals and remove from view (0ms)
-    setPropertyToDelete(null);
+    // Remove from view
     if (selectedPropertyForView?.id === targetId) setSelectedPropertyForView(null);
     setProperties((prev) => prev.filter((p) => p.id !== targetId));
 
@@ -319,6 +331,52 @@ export default function AdminDashboardPage() {
     } catch (err: any) {
       setProperties(previousProperties);
       alert(err.message || "Failed to delete property");
+    }
+  };
+
+  const handleAddPropertySubmit = async (propertyData: any) => {
+    const tempId = Date.now();
+    const locObj = locations.find((l) => l.id === propertyData.location_id) || { name: "Gujarat" };
+
+    const newOptimisticProperty = {
+      id: tempId,
+      ...propertyData,
+      location: locObj,
+      verification_status: "approved",
+      booking_enabled: true,
+      images: propertyData.images || [],
+      created_at: new Date().toISOString(),
+    };
+
+    // 1. Optimistic insert at top of list
+    setProperties((prev) => [newOptimisticProperty, ...prev]);
+    setJustAddedPropertyId(tempId);
+
+    // 2. Trigger Add Celebration Animation
+    setCelebrationData({
+      name: propertyData.name,
+      property_type: propertyData.property_type,
+      location_name: locObj.name,
+      price_per_night: propertyData.price_per_night,
+      image_url: propertyData.images?.[0]?.image_url,
+    });
+
+    // Clear highlight after 5s
+    setTimeout(() => {
+      setJustAddedPropertyId(null);
+    }, 5000);
+
+    // 3. Background API request
+    try {
+      const res = await api.properties.create(propertyData);
+      if (res.success && res.data) {
+        setProperties((prev) =>
+          prev.map((p) => (p.id === tempId ? { ...p, ...res.data } : p))
+        );
+      }
+      loadAdminData(true);
+    } catch (err: any) {
+      console.warn("Property create error:", err);
     }
   };
 
@@ -1570,6 +1628,14 @@ export default function AdminDashboardPage() {
                     Pending: {pendingCount}
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setIsAddPropertyModalOpen(true)}
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add New Stay</span>
+                </button>
               </div>
             </div>
 
@@ -1679,10 +1745,17 @@ export default function AdminDashboardPage() {
                     const isApproved = st === "approved";
                     const isPaused = st === "paused";
                     const isBlocked = st === "blocked";
-                    const isPending = st === "pending";
+                    const isJustAdded = p.id === justAddedPropertyId;
 
                     return (
-                      <tr key={p.id} className="hover:bg-stone-50/80 transition-colors">
+                      <tr
+                        key={p.id}
+                        className={`transition-colors ${
+                          isJustAdded
+                            ? "animate-row-added bg-emerald-50/70"
+                            : "hover:bg-stone-50/80"
+                        }`}
+                      >
                         {/* Stay & Photos */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center space-x-3">
@@ -1703,9 +1776,17 @@ export default function AdminDashboardPage() {
                               )}
                             </div>
                             <div className="max-w-[200px] sm:max-w-xs">
-                              <span className="font-bold block text-stone-900 truncate" title={p.name}>
-                                {p.name}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold block text-stone-900 truncate" title={p.name}>
+                                  {p.name}
+                                </span>
+                                {isJustAdded && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white animate-bounce shadow-sm flex-shrink-0">
+                                    <Sparkles className="w-2.5 h-2.5" />
+                                    <span>New</span>
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-1.5 text-[10px] text-stone-400 mt-0.5">
                                 {p.host?.business_name && (
                                   <span className="text-stone-600 font-semibold truncate max-w-[120px]">
@@ -2225,6 +2306,23 @@ export default function AdminDashboardPage() {
         property={propertyToDelete}
         onClose={() => setPropertyToDelete(null)}
         onConfirm={handleDeletePropertyConfirm}
+      />
+
+      {/* ADMIN ADD PROPERTY MODAL */}
+      <AdminAddPropertyModal
+        isOpen={isAddPropertyModalOpen}
+        locations={locations}
+        onClose={() => setIsAddPropertyModalOpen(false)}
+        onSubmit={handleAddPropertySubmit}
+      />
+
+      {/* ADD CELEBRATION MODAL */}
+      <AddCelebrationModal
+        isOpen={!!celebrationData}
+        property={celebrationData}
+        title="Stay Added Successfully!"
+        subtitle="New Gujarat property listed & live on platform."
+        onClose={() => setCelebrationData(null)}
       />
 
       {/* BOOKING DETAIL INSPECTION MODAL */}
