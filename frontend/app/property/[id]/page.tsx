@@ -27,7 +27,8 @@ import {
   ArrowRight,
   MessageCircle,
   Phone,
-  Lock
+  Lock,
+  Layers
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -485,6 +486,18 @@ export default function PropertyDetailPage() {
                 <p className="text-sm font-bold text-stone-900">{property.check_in_time} / {property.check_out_time}</p>
               </div>
             </div>
+
+            {property.total_units && property.total_units > 1 && (
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs text-stone-400 font-bold uppercase">Total Units</span>
+                  <p className="text-sm font-bold text-stone-900">{property.total_units} Units Capacity</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* About this stay */}

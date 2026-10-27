@@ -620,6 +620,7 @@ def create_property(
         max_guests=prop_in.max_guests,
         bedrooms=prop_in.bedrooms,
         bathrooms=prop_in.bathrooms,
+        total_units=prop_in.total_units if prop_in.total_units is not None else 1,
         address=prop_in.address,
         latitude=prop_in.latitude,
         longitude=prop_in.longitude,

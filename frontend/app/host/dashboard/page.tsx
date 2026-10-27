@@ -114,6 +114,7 @@ export default function HostDashboardPage() {
   const [propGuests, setPropGuests] = useState(6);
   const [propBedrooms, setPropBedrooms] = useState(3);
   const [propBathrooms, setPropBathrooms] = useState(3);
+  const [propTotalUnits, setPropTotalUnits] = useState(1);
   const [propAddress, setPropAddress] = useState("");
   const [propRules, setPropRules] = useState("No loud noise after 10 PM. Valid ID required at check-in.");
   const [selectedAmenityIds, setSelectedAmenityIds] = useState<number[]>([1, 2, 3, 5]);
@@ -446,6 +447,7 @@ export default function HostDashboardPage() {
     setPropGuests(prop.max_guests);
     setPropBedrooms(prop.bedrooms);
     setPropBathrooms(prop.bathrooms);
+    setPropTotalUnits(prop.total_units || 1);
     setPropAddress(prop.address);
     setPropRules(prop.house_rules || "");
     setSelectedAmenityIds(prop.amenities_list?.map((a: any) => a.id) || []);
@@ -487,6 +489,7 @@ export default function HostDashboardPage() {
     setPropGuests(6);
     setPropBedrooms(3);
     setPropBathrooms(3);
+    setPropTotalUnits(1);
     setPropAddress("");
     setPropRules("No loud noise after 10 PM. Valid ID required at check-in.");
     setSelectedAmenityIds([1, 2, 3, 5]);
@@ -533,6 +536,7 @@ export default function HostDashboardPage() {
       max_guests: Number(propGuests),
       bedrooms: Number(propBedrooms),
       bathrooms: Number(propBathrooms),
+      total_units: Math.max(1, Number(propTotalUnits) || 1),
       address: propAddress,
       house_rules: propRules,
       amenity_ids: selectedAmenityIds,
@@ -1362,6 +1366,15 @@ export default function HostDashboardPage() {
                     </div>
                     <h4 className="font-bold text-base text-stone-900 line-clamp-1">{prop.name}</h4>
                     <p className="text-xs text-stone-500">{prop.location?.name}, Gujarat</p>
+                    <div className="flex items-center gap-2 mt-1.5 text-[11px] font-semibold text-stone-500">
+                      <span>{prop.max_guests} Guests</span>
+                      <span>•</span>
+                      <span>{prop.bedrooms} Bed{prop.bedrooms > 1 ? "s" : ""}</span>
+                      <span>•</span>
+                      <span className="text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded font-bold">
+                        {prop.total_units || 1} Unit{(prop.total_units || 1) > 1 ? "s" : ""}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs">
@@ -1873,15 +1886,16 @@ export default function HostDashboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-700 uppercase">Max Guests</label>
                 <input
                   type="number"
+                  min={1}
                   required
                   value={propGuests}
                   onChange={(e) => setPropGuests(Number(e.target.value))}
-                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900"
+                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none"
                 />
               </div>
 
@@ -1889,10 +1903,11 @@ export default function HostDashboardPage() {
                 <label className="text-xs font-bold text-stone-700 uppercase">Bedrooms</label>
                 <input
                   type="number"
+                  min={1}
                   required
                   value={propBedrooms}
                   onChange={(e) => setPropBedrooms(Number(e.target.value))}
-                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900"
+                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none"
                 />
               </div>
 
@@ -1900,10 +1915,27 @@ export default function HostDashboardPage() {
                 <label className="text-xs font-bold text-stone-700 uppercase">Bathrooms</label>
                 <input
                   type="number"
+                  min={1}
                   required
                   value={propBathrooms}
                   onChange={(e) => setPropBathrooms(Number(e.target.value))}
-                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900"
+                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700 uppercase">Total Units</label>
+                  <span className="text-[10px] text-brand-600 font-bold bg-brand-50 px-1.5 py-0.5 rounded">Inventory</span>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={propTotalUnits}
+                  onChange={(e) => setPropTotalUnits(Math.max(1, Number(e.target.value)))}
+                  placeholder="e.g. 1"
+                  className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
             </div>

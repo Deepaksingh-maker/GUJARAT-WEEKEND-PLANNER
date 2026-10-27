@@ -854,6 +854,7 @@ export const AdminAddPropertyModal: React.FC<AdminAddPropertyModalProps> = ({
   const [maxGuests, setMaxGuests] = useState(6);
   const [bedrooms, setBedrooms] = useState(3);
   const [bathrooms, setBathrooms] = useState(3);
+  const [totalUnits, setTotalUnits] = useState(1);
   const [imageUrl, setImageUrl] = useState("https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -890,6 +891,7 @@ export const AdminAddPropertyModal: React.FC<AdminAddPropertyModalProps> = ({
         max_guests: Number(maxGuests),
         bedrooms: Number(bedrooms),
         bathrooms: Number(bathrooms),
+        total_units: Number(totalUnits) || 1,
         address: "Gujarat, India",
         house_rules: "Valid photo ID required at check-in. Standard checkout guidelines apply.",
         images: [
@@ -1015,6 +1017,29 @@ export const AdminAddPropertyModal: React.FC<AdminAddPropertyModalProps> = ({
                 min={1}
                 value={bedrooms}
                 onChange={(e) => setBedrooms(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-stone-600 mb-1">Bathrooms</label>
+              <input
+                type="number"
+                min={1}
+                value={bathrooms}
+                onChange={(e) => setBathrooms(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
+              />
+            </div>
+            <div>
+              <label className="block text-stone-600 mb-1">Total Units / Villas</label>
+              <input
+                type="number"
+                min={1}
+                value={totalUnits}
+                onChange={(e) => setTotalUnits(Math.max(1, Number(e.target.value)))}
                 className="w-full p-2.5 rounded-xl border border-stone-200 font-semibold text-stone-900 bg-stone-50"
               />
             </div>
